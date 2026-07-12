@@ -103,6 +103,7 @@ export default function EventControlPage({ params }: PageProps) {
   const [isSecureContext, setIsSecureContext] = useState(true);
   const [cameraErrorMsg, setCameraErrorMsg] = useState("");
   const [activeCameraStream, setActiveCameraStream] = useState<MediaStream | null>(null);
+  const [lastScannedRawValue, setLastScannedRawValue] = useState<string>("");
   const [isProcessingScan, setIsProcessingScan] = useState(false);
   const checkoutQtyInputRef = useRef<HTMLInputElement | null>(null);
   const returnQtyInputRef = useRef<HTMLInputElement | null>(null);
@@ -280,6 +281,7 @@ export default function EventControlPage({ params }: PageProps) {
     }
 
     let activeStream: MediaStream | null = null;
+    let intervalId: any = null;
 
     // 1. DOM Mount Check: Delay starting getUserMedia to guarantee video tag has fully mounted in modal DOM
     const startStream = async () => {
@@ -305,6 +307,39 @@ export default function EventControlPage({ params }: PageProps) {
           // Clear error/loading on success and save stream in state to trigger re-renders
           setCameraErrorMsg("");
           setActiveCameraStream(stream);
+
+          // 3. Verification of Engine Start: Start active frame processing canvas loop 4 times per second (250ms)
+          console.log("Actively passing video track into the decoding engine's frame processing loop...");
+          intervalId = setInterval(async () => {
+            if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
+            if (videoRef.current.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+              try {
+                const canvas = document.createElement("canvas");
+                canvas.width = videoRef.current.videoWidth || 640;
+                canvas.height = videoRef.current.videoHeight || 480;
+                const ctx = canvas.getContext("2d");
+                if (ctx) {
+                  ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+                  console.log("Canvas Processing Loop: Draw frame success at 4Hz");
+
+                  // Check if browser native BarcodeDetector is available
+                  if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+                    // @ts-ignore
+                    const detector = new window.BarcodeDetector({
+                      formats: ["qr_code", "code_128", "ean_13", "code_39"]
+                    });
+                    const barcodes = await detector.detect(canvas);
+                    if (barcodes && barcodes.length > 0) {
+                      const detectedValue = barcodes[0].rawValue;
+                      processScanSuccess(detectedValue);
+                    }
+                  }
+                }
+              } catch (drawErr) {
+                console.warn("Canvas draw frame or native decode failed in background loop:", drawErr);
+              }
+            }
+          }, 250);
         } else {
           setCameraErrorMsg("The browser does not support MediaDevices hardware streaming.");
         }
@@ -321,6 +356,10 @@ export default function EventControlPage({ params }: PageProps) {
 
     return () => {
       clearTimeout(mountTimer);
+      if (intervalId) {
+        clearInterval(intervalId);
+        console.log("Cleanup unmount: Cleared active frame reader interval loop.");
+      }
       if (activeStream) {
         activeStream.getTracks().forEach((track) => {
           track.stop();
@@ -348,83 +387,96 @@ export default function EventControlPage({ params }: PageProps) {
 
   // Tab-Aware Automatic Hands-Free Scanning Logic
   const processScanSuccess = async (payload: string) => {
+    // 2. Radical In-App Debugging Console Output
+    console.log("DECODED DATA DETECTED:", payload);
+
     if (isProcessingScan) {
       console.log("Scanner locked: Debounce guardrail active.");
       return;
     }
 
-    setIsProcessingScan(true);
-    console.log("Automatic Decoding success with payload:", payload);
-
-    // 1. Parsing payload logic (supports raw string or JSON `{ wId, itemId, sku }`)
-    let scannedSku = payload.trim();
-    let scannedId = "";
-
     try {
-      if (payload.trim().startsWith("{") && payload.trim().endsWith("}")) {
-        const parsed = JSON.parse(payload);
-        if (parsed.sku) scannedSku = parsed.sku.trim();
-        if (parsed.itemId) scannedId = parsed.itemId.trim();
-      }
-    } catch (e) {
-      console.log("Payload is raw text. Proceeding without JSON parsing.");
-    }
+      setIsProcessingScan(true);
+      setLastScannedRawValue(payload);
 
-    // Instantly close/pause camera stream modal
-    stopCameraStream();
+      // 1. Bulletproof Hybrid Parsing Logic
+      let scannedSku = payload.trim();
+      let scannedId = "";
 
-    // Query inventory collection for a matching item
-    const match = inventoryList.find(
-      (item) => 
-        item.sku.toUpperCase() === scannedSku.toUpperCase() || 
-        item.id === scannedId || 
-        item.id === scannedSku
-    );
-
-    if (activeTab === "checkout") {
-      setCheckoutError("");
-      setCheckoutSuccess("");
-      
-      if (!match) {
-        setCheckoutError(`Barcode Mismatch: Asset with SKU/ID "${scannedSku}" not found in current inventory.`);
-        setIsProcessingScan(false);
-        return;
+      try {
+        if (payload.trim().startsWith("{") && payload.trim().endsWith("}")) {
+          const parsed = JSON.parse(payload);
+          if (parsed && typeof parsed === "object") {
+            if (parsed.sku) scannedSku = String(parsed.sku).trim();
+            if (parsed.itemId) scannedId = String(parsed.itemId).trim();
+            console.log("Successfully parsed structured JSON scan payload:", { scannedSku, scannedId });
+          }
+        }
+      } catch (jsonErr) {
+        // Catch gracefully, use raw text fallback as SKU or ID
+        console.log("Payload JSON.parse failed. Gracefully treating as plain SKU or ID text string:", jsonErr);
+        scannedSku = payload.trim();
       }
 
-      setMatchedItem(match);
-      setCheckoutQty("1");
-      setScanSkuInput(match.sku);
-    } else {
-      // Return scan safety gate validation checks
-      setReturnMismatchedAlert("");
-      setReturnSuccess("");
+      // Instantly close/pause camera stream modal
+      stopCameraStream();
 
-      if (!match) {
-        setReturnMismatchedAlert(`Barcode Mismatch: Asset with SKU/ID "${scannedSku}" not found in current inventory.`);
-        setIsProcessingScan(false);
-        return;
+      // Query inventory collection for a matching item
+      const match = inventoryList.find(
+        (item) => 
+          item.sku.toUpperCase() === scannedSku.toUpperCase() || 
+          item.id === scannedId || 
+          item.id === scannedSku
+      );
+
+      if (activeTab === "checkout") {
+        setCheckoutError("");
+        setCheckoutSuccess("");
+        
+        if (!match) {
+          setCheckoutError(`Barcode Mismatch: Asset with SKU/ID "${scannedSku}" not found in current inventory.`);
+          setIsProcessingScan(false);
+          return;
+        }
+
+        setMatchedItem(match);
+        setCheckoutQty("1");
+        setScanSkuInput(match.sku);
+      } else {
+        // Return scan safety gate validation checks
+        setReturnMismatchedAlert("");
+        setReturnSuccess("");
+
+        if (!match) {
+          setReturnMismatchedAlert(`Barcode Mismatch: Asset with SKU/ID "${scannedSku}" not found in current inventory.`);
+          setIsProcessingScan(false);
+          return;
+        }
+
+        const allocated = eventData?.itemsAllocated[match.id];
+        const qtyCheckedOut = allocated?.qtyCheckedOut || 0;
+        const qtyReturned = allocated?.qtyReturned || 0;
+        const qtyDamaged = allocated?.qtyDamaged || 0;
+        const qtyMissing = allocated?.qtyMissing || 0;
+        const currentlyCheckedOut = qtyCheckedOut - (qtyReturned + qtyDamaged + qtyMissing);
+
+        if (!allocated || currentlyCheckedOut <= 0) {
+          setReturnMismatchedAlert(`Asset Mismatch: This item "${match.name}" was not checked out to this event.`);
+          setActiveReturnItem(null);
+          setIsProcessingScan(false);
+          return;
+        }
+
+        setReturnQty(currentlyCheckedOut.toString());
+        setReturnCondition("Excellent");
+        setReturnNote("");
+        setReturnPhoto(null);
+        setActiveReturnItem(match);
+        setScanReturnSkuInput(match.sku);
       }
-
-      const allocated = eventData?.itemsAllocated[match.id];
-      const qtyCheckedOut = allocated?.qtyCheckedOut || 0;
-      const qtyReturned = allocated?.qtyReturned || 0;
-      const qtyDamaged = allocated?.qtyDamaged || 0;
-      const qtyMissing = allocated?.qtyMissing || 0;
-      const currentlyCheckedOut = qtyCheckedOut - (qtyReturned + qtyDamaged + qtyMissing);
-
-      if (!allocated || currentlyCheckedOut <= 0) {
-        setReturnMismatchedAlert(`Asset Mismatch: This item "${match.name}" was not checked out to this event.`);
-        setActiveReturnItem(null);
-        setIsProcessingScan(false);
-        return;
-      }
-
-      setReturnQty(currentlyCheckedOut.toString());
-      setReturnCondition("Excellent");
-      setReturnNote("");
-      setReturnPhoto(null);
-      setActiveReturnItem(match);
-      setScanReturnSkuInput(match.sku);
+    } catch (generalErr) {
+      console.error("Critical error in scan resolution callback sequence:", generalErr);
+      setIsProcessingScan(false);
     }
   };
 
@@ -1775,6 +1827,17 @@ export default function EventControlPage({ params }: PageProps) {
                       [{item.sku}] {item.name}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* RADICAL IN-APP DEBUGGING DIAGNOSTICS */}
+              <div className="bg-black border border-zinc-800 rounded-lg p-2.5 text-xs font-mono text-green-400 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+                  <span className="size-1.5 rounded-full bg-green-500 animate-ping shrink-0" />
+                  Scanner Frame-Reader Loop Active (4Hz)
+                </div>
+                <div className="truncate">
+                  Last Scanned Raw Data: <span className="text-white font-extrabold">{lastScannedRawValue || "N/A (Ready for code detection...)"}</span>
                 </div>
               </div>
 
