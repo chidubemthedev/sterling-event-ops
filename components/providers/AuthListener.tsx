@@ -16,6 +16,49 @@ import {
   RefreshCw
 } from "lucide-react";
 
+/**
+ * Safely parses the expiration date whether it is stored as:
+ * - A standard plain date string ("2026-07-30")
+ * - An ISO date-time string ("2026-07-30T15:00:00.000Z")
+ * - A native Firebase/Firestore Timestamp object
+ */
+function parseExpiryDate(val: any): Date | null {
+  if (!val) return null;
+  
+  // 1. Check if it's a Firestore Timestamp object (has .toDate or .seconds)
+  if (typeof val === "object" && val !== null) {
+    if (typeof val.toDate === "function") {
+      return val.toDate();
+    }
+    if (typeof val.seconds === "number") {
+      return new Date(val.seconds * 1000);
+    }
+  }
+  
+  // 2. If it is a string or number
+  if (typeof val === "string") {
+    // If it's a plain "YYYY-MM-DD", append T23:59:59 to make it timezone-agnostic and avoid off-by-one errors
+    let formattedVal = val;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      formattedVal = `${val}T23:59:59`;
+    }
+    const d = new Date(formattedVal);
+    if (!isNaN(d.getTime())) {
+      return d;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Formats a Date object to standard YYYY-MM-DD plain text
+ */
+function formatExpiryDate(date: Date | null): string {
+  if (!date) return "N/A";
+  return date.toISOString().split("T")[0];
+}
+
 export function AuthListener({ children }: { children: React.ReactNode }) {
   const { 
     user, 
@@ -32,9 +75,15 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
   const isSubscriptionActive = useSubscriptionActive();
 
   useEffect(() => {
+    let unsubscribeWorkspace: (() => void) | null = null;
+
     // Listen for authentication changes
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
+        if (unsubscribeWorkspace) {
+          unsubscribeWorkspace();
+          unsubscribeWorkspace = null;
+        }
         clearAuth();
         return;
       }
@@ -45,24 +94,81 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
       // Real-time subscription to user document changes in Firestore
       const unsubscribeDoc = onSnapshot(
         userDocRef,
-        async (snapshot) => {
-          if (snapshot.exists()) {
-            const data = snapshot.data();
-            const subData = data.subscription || { 
-              isActive: false, 
-              plan: "N/A", 
-              validUntil: "N/A" 
-            };
-            
-            setAuth(
-              currentUser,
-              data.workspaceId || null,
-              {
-                isActive: subData.isActive,
-                plan: subData.plan || "Free",
-                validUntil: subData.validUntil || "Expired",
-              }
-            );
+        async (userSnapshot) => {
+          if (unsubscribeWorkspace) {
+            unsubscribeWorkspace();
+            unsubscribeWorkspace = null;
+          }
+
+          if (userSnapshot.exists()) {
+            const userData = userSnapshot.data();
+            const currentWorkspaceId = userData.workspaceId || null;
+
+            if (currentWorkspaceId) {
+              // Subscribe to the workspace document
+              const workspaceRef = doc(db, "workspaces", currentWorkspaceId);
+              unsubscribeWorkspace = onSnapshot(
+                workspaceRef,
+                (workspaceSnapshot) => {
+                  if (workspaceSnapshot.exists()) {
+                    const wsData = workspaceSnapshot.data();
+                    const wsSub = wsData.subscription || {};
+
+                    const parsedExpiry = parseExpiryDate(wsSub.validUntil);
+                    const formattedExpiry = formatExpiryDate(parsedExpiry);
+                    
+                    // Determine active state: isActive field is true and not expired
+                    const isNowActive = wsSub.isActive === true && (parsedExpiry ? parsedExpiry.getTime() > Date.now() : true);
+
+                    setAuth(
+                      currentUser,
+                      currentWorkspaceId,
+                      {
+                        isActive: isNowActive,
+                        plan: wsSub.plan || "Basic",
+                        validUntil: formattedExpiry
+                      }
+                    );
+                  } else {
+                    // Workspace doc missing, use user-level subscription or default active trial fallback
+                    const userSub = userData.subscription || {};
+                    const parsedExpiry = parseExpiryDate(userSub.validUntil);
+                    const formattedExpiry = formatExpiryDate(parsedExpiry);
+                    const isNowActive = userSub.isActive === true && (parsedExpiry ? parsedExpiry.getTime() > Date.now() : true);
+
+                    setAuth(
+                      currentUser,
+                      currentWorkspaceId,
+                      {
+                        isActive: isNowActive,
+                        plan: userSub.plan || "Free",
+                        validUntil: formattedExpiry
+                      }
+                    );
+                  }
+                },
+                (err) => {
+                  console.error("Firestore workspace profile subscription error:", err);
+                  setLoading(false);
+                }
+              );
+            } else {
+              // No workspaceId in user profile, set default state
+              const userSub = userData.subscription || {};
+              const parsedExpiry = parseExpiryDate(userSub.validUntil);
+              const formattedExpiry = formatExpiryDate(parsedExpiry);
+              const isNowActive = userSub.isActive === true && (parsedExpiry ? parsedExpiry.getTime() > Date.now() : true);
+
+              setAuth(
+                currentUser,
+                null,
+                {
+                  isActive: isNowActive,
+                  plan: userSub.plan || "Free",
+                  validUntil: formattedExpiry
+                }
+              );
+            }
           } else {
             // Self-healing / Onboarding flow: Auto-create document if missing
             const defaultWorkspaceId = `workspace_${currentUser.uid.substring(0, 6)}`;
@@ -92,10 +198,21 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
         }
       );
 
-      return () => unsubscribeDoc();
+      return () => {
+        unsubscribeDoc();
+        if (unsubscribeWorkspace) {
+          unsubscribeWorkspace();
+          unsubscribeWorkspace = null;
+        }
+      };
     });
 
-    return () => unsubscribeAuth();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeWorkspace) {
+        unsubscribeWorkspace();
+      }
+    };
   }, [setAuth, clearAuth, setLoading]);
 
   const handleSignOut = async () => {
