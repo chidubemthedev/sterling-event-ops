@@ -103,6 +103,10 @@ export default function EventControlPage({ params }: PageProps) {
   const [isSecureContext, setIsSecureContext] = useState(true);
   const [cameraErrorMsg, setCameraErrorMsg] = useState("");
   const [activeCameraStream, setActiveCameraStream] = useState<MediaStream | null>(null);
+  const [isProcessingScan, setIsProcessingScan] = useState(false);
+  const checkoutQtyInputRef = useRef<HTMLInputElement | null>(null);
+  const returnQtyInputRef = useRef<HTMLInputElement | null>(null);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -140,6 +144,37 @@ export default function EventControlPage({ params }: PageProps) {
   const [closeoutNotesInput, setCloseoutNotesInput] = useState("");
   const [submittingCloseout, setSubmittingCloseout] = useState(false);
   const [closeoutError, setCloseoutError] = useState("");
+
+  // Auto-focus useEffect for Checkout Quantity Input
+  useEffect(() => {
+    if (matchedItem) {
+      setTimeout(() => {
+        if (checkoutQtyInputRef.current) {
+          checkoutQtyInputRef.current.focus();
+          checkoutQtyInputRef.current.select();
+        }
+      }, 150);
+    }
+  }, [matchedItem]);
+
+  // Auto-focus useEffect for Return Quantity Input
+  useEffect(() => {
+    if (activeReturnItem) {
+      setTimeout(() => {
+        if (returnQtyInputRef.current) {
+          returnQtyInputRef.current.focus();
+          returnQtyInputRef.current.select();
+        }
+      }, 150);
+    }
+  }, [activeReturnItem]);
+
+  // Debounce self-cleaning lock tracker
+  useEffect(() => {
+    if (!matchedItem && !activeReturnItem) {
+      setIsProcessingScan(false);
+    }
+  }, [matchedItem, activeReturnItem]);
 
   // Operator credentials
   const actionedByName = user?.displayName || user?.email?.split("@")[0] || "Operator Staff";
@@ -311,17 +346,66 @@ export default function EventControlPage({ params }: PageProps) {
     setIsScannerOpen(false);
   };
 
-  // Simulating barcode scanner click selection inside Dialog overlay
-  const handleSimulateScan = (item: InventoryItem) => {
+  // Tab-Aware Automatic Hands-Free Scanning Logic
+  const processScanSuccess = async (payload: string) => {
+    if (isProcessingScan) {
+      console.log("Scanner locked: Debounce guardrail active.");
+      return;
+    }
+
+    setIsProcessingScan(true);
+    console.log("Automatic Decoding success with payload:", payload);
+
+    // 1. Parsing payload logic (supports raw string or JSON `{ wId, itemId, sku }`)
+    let scannedSku = payload.trim();
+    let scannedId = "";
+
+    try {
+      if (payload.trim().startsWith("{") && payload.trim().endsWith("}")) {
+        const parsed = JSON.parse(payload);
+        if (parsed.sku) scannedSku = parsed.sku.trim();
+        if (parsed.itemId) scannedId = parsed.itemId.trim();
+      }
+    } catch (e) {
+      console.log("Payload is raw text. Proceeding without JSON parsing.");
+    }
+
+    // Instantly close/pause camera stream modal
     stopCameraStream();
 
-    if (scannerTargetTab === "checkout") {
-      setMatchedItem(item);
+    // Query inventory collection for a matching item
+    const match = inventoryList.find(
+      (item) => 
+        item.sku.toUpperCase() === scannedSku.toUpperCase() || 
+        item.id === scannedId || 
+        item.id === scannedSku
+    );
+
+    if (activeTab === "checkout") {
+      setCheckoutError("");
+      setCheckoutSuccess("");
+      
+      if (!match) {
+        setCheckoutError(`Barcode Mismatch: Asset with SKU/ID "${scannedSku}" not found in current inventory.`);
+        setIsProcessingScan(false);
+        return;
+      }
+
+      setMatchedItem(match);
       setCheckoutQty("1");
-      setScanSkuInput(item.sku);
+      setScanSkuInput(match.sku);
     } else {
       // Return scan safety gate validation checks
-      const allocated = eventData?.itemsAllocated[item.id];
+      setReturnMismatchedAlert("");
+      setReturnSuccess("");
+
+      if (!match) {
+        setReturnMismatchedAlert(`Barcode Mismatch: Asset with SKU/ID "${scannedSku}" not found in current inventory.`);
+        setIsProcessingScan(false);
+        return;
+      }
+
+      const allocated = eventData?.itemsAllocated[match.id];
       const qtyCheckedOut = allocated?.qtyCheckedOut || 0;
       const qtyReturned = allocated?.qtyReturned || 0;
       const qtyDamaged = allocated?.qtyDamaged || 0;
@@ -329,15 +413,24 @@ export default function EventControlPage({ params }: PageProps) {
       const currentlyCheckedOut = qtyCheckedOut - (qtyReturned + qtyDamaged + qtyMissing);
 
       if (!allocated || currentlyCheckedOut <= 0) {
-        setReturnMismatchedAlert(`Asset Mismatch: This item "${item.name}" was not checked out to this event.`);
+        setReturnMismatchedAlert(`Asset Mismatch: This item "${match.name}" was not checked out to this event.`);
         setActiveReturnItem(null);
+        setIsProcessingScan(false);
         return;
       }
 
       setReturnQty(currentlyCheckedOut.toString());
-      setActiveReturnItem(item);
-      setScanReturnSkuInput(item.sku);
+      setReturnCondition("Excellent");
+      setReturnNote("");
+      setReturnPhoto(null);
+      setActiveReturnItem(match);
+      setScanReturnSkuInput(match.sku);
     }
+  };
+
+  // Simulating barcode scanner click selection inside Dialog overlay
+  const handleSimulateScan = (item: InventoryItem) => {
+    processScanSuccess(item.sku);
   };
 
   // Handle manual SKU scan forms
@@ -1150,6 +1243,7 @@ export default function EventControlPage({ params }: PageProps) {
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold text-zinc-300 block">Allocation Batch Quantity</label>
                       <input 
+                        ref={checkoutQtyInputRef}
                         type="number" 
                         min="1" 
                         max={matchedItem.warehouseQty}
@@ -1303,6 +1397,7 @@ export default function EventControlPage({ params }: PageProps) {
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold text-zinc-300 block">Returning Quantity</label>
                       <input 
+                        ref={returnQtyInputRef}
                         type="number" 
                         min="1" 
                         value={returnQty}
