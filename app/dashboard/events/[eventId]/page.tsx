@@ -102,6 +102,7 @@ export default function EventControlPage({ params }: PageProps) {
   const [scannerTargetTab, setScannerTargetTab] = useState<"checkout" | "return">("checkout");
   const [isSecureContext, setIsSecureContext] = useState(true);
   const [cameraErrorMsg, setCameraErrorMsg] = useState("");
+  const [activeCameraStream, setActiveCameraStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -239,12 +240,13 @@ export default function EventControlPage({ params }: PageProps) {
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
+      setActiveCameraStream(null);
       return;
     }
 
     let activeStream: MediaStream | null = null;
 
-    // 1. DOM Mount Check: Delay startinggetUserMedia to guarantee video tag has fully mounted in modal DOM
+    // 1. DOM Mount Check: Delay starting getUserMedia to guarantee video tag has fully mounted in modal DOM
     const startStream = async () => {
       setCameraErrorMsg("");
       try {
@@ -265,12 +267,16 @@ export default function EventControlPage({ params }: PageProps) {
           } else {
             console.warn("Video ref is currently unassigned in active layout.");
           }
+          // Clear error/loading on success and save stream in state to trigger re-renders
+          setCameraErrorMsg("");
+          setActiveCameraStream(stream);
         } else {
           setCameraErrorMsg("The browser does not support MediaDevices hardware streaming.");
         }
       } catch (err: any) {
         console.error("Webcam device enumeration failed:", err);
         setCameraErrorMsg(err.message || "Could not start camera stream.");
+        setActiveCameraStream(null);
       }
     };
 
@@ -290,6 +296,7 @@ export default function EventControlPage({ params }: PageProps) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
+      setActiveCameraStream(null);
     };
   }, [isScannerOpen]);
 
@@ -1637,13 +1644,13 @@ export default function EventControlPage({ params }: PageProps) {
 
                 <video 
                   ref={videoRef}
-                  autoPlay
-                  playsInline
+                  autoPlay={true}
+                  playsInline={true}
                   className="w-full h-full object-cover"
                 />
 
                 {/* If stream failed */}
-                {(!streamRef.current || cameraErrorMsg) && (
+                {(!activeCameraStream || cameraErrorMsg) && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 space-y-2 bg-zinc-950/90 z-20">
                     <AlertTriangle className="size-8 text-amber-500 animate-bounce" />
                     <span className="text-xs text-zinc-300 font-bold">Live Camera Feed Unavailable</span>
