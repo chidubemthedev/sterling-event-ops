@@ -26,7 +26,7 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setAuth } = useWorkspaceStore();
+  const { user, loading: authLoading, setAuth } = useWorkspaceStore();
 
   // Form states
   const [email, setEmail] = useState("");
@@ -35,6 +35,55 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setFormError] = useState("");
   const [successMessage, setFormSuccess] = useState("");
+
+  // LoggedIn Redirect Effect
+  React.useEffect(() => {
+    if (authLoading || !user) return;
+
+    const performRedirect = async () => {
+      const lowercaseEmail = user.email?.toLowerCase();
+
+      // Condition 1: Specific Testing Bypass email
+      if (lowercaseEmail === "chukwudubem7@gmail.com") {
+        router.push("/superadmin");
+        return;
+      }
+
+      try {
+        const idTokenResult = await user.getIdTokenResult();
+        const roleClaim = idTokenResult.claims.role;
+
+        // Condition 2: Custom claim role === "superadmin"
+        if (roleClaim === "superadmin") {
+          router.push("/superadmin");
+          return;
+        }
+
+        // Condition 3: Look up Firestore user profile for role
+        let userDoc = await getDoc(doc(db, "users", user.uid));
+        if (!userDoc.exists() && user.email) {
+          userDoc = await getDoc(doc(db, "users", user.email.toLowerCase()));
+        }
+
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const role = userData.role || "admin";
+          if (role === "superadmin") {
+            router.push("/superadmin");
+          } else {
+            router.push("/dashboard");
+          }
+        } else {
+          router.push("/dashboard");
+        }
+      } catch (err) {
+        console.error("Auto redirect claim check error:", err);
+        router.push("/dashboard");
+      }
+    };
+
+    performRedirect();
+  }, [user, authLoading, router]);
 
   // Handle Form Submission
   const handleLogin = async (e: React.FormEvent) => {
