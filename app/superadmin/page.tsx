@@ -23,7 +23,9 @@ import {
   Search,
   Lock,
   LogOut,
-  RefreshCw
+  RefreshCw,
+  Copy,
+  Check
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 
@@ -58,6 +60,11 @@ export default function SuperadminPage() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Invitation Modal State
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [generatedInviteUrl, setGeneratedInviteUrl] = useState("");
+  const [copied, setCopied] = useState(false);
   
   // Form State
   const [companyName, setCompanyName] = useState("");
@@ -174,21 +181,27 @@ export default function SuperadminPage() {
 
       await setDoc(workspaceRef, newWorkspace);
 
-      // 3. Optional: Create user profile linking the owner to this workspace in firestore
-      const userRef = doc(db, "users", ownerEmail.trim().toLowerCase());
-      // Check if user document already exists, if not initialize it with workspace reference
-      await setDoc(userRef, {
-        workspaceId: generatedWorkspaceId,
-        email: ownerEmail.trim().toLowerCase(),
-        subscription: {
-          isActive: true,
-          plan: subscriptionTier,
-          validUntil: expiryDate,
-        },
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      // 3. Generate unique invite token and write to invites collection
+      const inviteToken = typeof window !== "undefined" && window.crypto && window.crypto.randomUUID 
+        ? window.crypto.randomUUID() 
+        : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
-      setFormSuccess(`Successfully registered workspace ${generatedWorkspaceId}!`);
+      const inviteRef = doc(db, "invites", inviteToken);
+      await setDoc(inviteRef, {
+        id: inviteToken,
+        workspaceId: generatedWorkspaceId,
+        workspaceName: companyName.trim(),
+        ownerEmail: ownerEmail.trim().toLowerCase(),
+        role: "admin",
+        accepted: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      setFormSuccess(`Successfully registered workspace and created invite!`);
+      
+      // Construct acceptance link
+      const inviteUrl = `${window.location.origin}/accept-invite?token=${inviteToken}`;
+      setGeneratedInviteUrl(inviteUrl);
       
       // Reset form
       setCompanyName("");
@@ -196,11 +209,12 @@ export default function SuperadminPage() {
       setSubscriptionTier("premium");
       setExpiryDate("");
       
-      // Close modal after brief delay
+      // Close creation modal and open invite links modal
       setTimeout(() => {
         setIsModalOpen(false);
         setFormSuccess("");
-      }, 1500);
+        setIsInviteModalOpen(true);
+      }, 1000);
 
     } catch (err: any) {
       console.error("Workspace generation error:", err);
@@ -642,6 +656,82 @@ export default function SuperadminPage() {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* INVITATION GENERATED MODAL */}
+      {isInviteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-zinc-950/80 transition-all duration-300 animate-in fade-in">
+          <div className="relative max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            {/* Accent light bar */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 via-indigo-500 to-cyan-400 shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
+
+            <div className="px-6 py-5 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white font-heading">
+                  Workspace Invitation Link
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsInviteModalOpen(false)}
+                className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-4 rounded-xl text-xs flex items-start gap-2.5">
+                <CheckCircle className="size-4 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block">Workspace Provisioned Successfully!</span>
+                  <p className="text-[11px] text-emerald-300/80 leading-relaxed mt-0.5">
+                    We have successfully initialized the new tenant workspace database registries and virtual directories. Please copy and send the link below to the client to complete their onboarding profile setup.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-400 font-mono">Acceptance Onboarding Link</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    readOnly
+                    value={generatedInviteUrl}
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 font-mono select-all outline-none"
+                  />
+                  <Button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(generatedInviteUrl);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className={`px-3 border border-none ${
+                      copied 
+                        ? "bg-emerald-600 hover:bg-emerald-500 text-white" 
+                        : "bg-indigo-600 hover:bg-indigo-500 text-white"
+                    } flex items-center justify-center transition-colors shrink-0`}
+                  >
+                    {copied ? (
+                      <Check className="size-4" />
+                    ) : (
+                      <Copy className="size-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button 
+                  onClick={() => setIsInviteModalOpen(false)}
+                  className="w-full bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white font-bold h-11 border-none"
+                >
+                  Dismiss Cockpit
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}
