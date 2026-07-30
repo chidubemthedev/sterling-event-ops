@@ -107,7 +107,7 @@ function AcceptInviteForm() {
         id: newUser.uid,
         email: inviteData.ownerEmail.toLowerCase(),
         name: fullName.trim(),
-        role: "admin",
+        role: inviteData.role || "staff",
         workspaceId: inviteData.workspaceId,
         createdAt: new Date().toISOString()
       });
