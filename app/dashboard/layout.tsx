@@ -22,7 +22,8 @@ import {
   Shield,
   Sparkles,
   CreditCard,
-  AlertTriangle
+  AlertTriangle,
+  Sliders
 } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -118,6 +119,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       name: "Audit Logs",
       href: "/dashboard/logs",
       icon: History
+    },
+    {
+      name: "Workspace Settings",
+      href: "/dashboard/settings",
+      icon: Sliders
     }
   ];
 
