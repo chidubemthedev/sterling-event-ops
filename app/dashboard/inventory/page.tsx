@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { collection, onSnapshot, query, where, doc, setDoc, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, where, doc, setDoc, updateDoc, deleteDoc, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,9 @@ import {
   X,
   Sparkles,
   CheckCircle,
-  ArrowRight
+  ArrowRight,
+  Pencil,
+  Trash2
 } from "lucide-react";
 
 interface InventoryItem {
@@ -42,10 +44,30 @@ interface InventoryItem {
   quarantineQty: number;
   workspaceId: string;
   createdAt: string;
+  category?: string;
+  warehouseLocation?: string;
 }
 
 export default function InventoryPage() {
   const { workspaceId, user, loading: authLoading } = useWorkspaceStore();
+  const [userRole, setUserRole] = useState<string>("staff"); // Secure by default
+
+  // Real-time User Role Subscription
+  useEffect(() => {
+    if (!user) return;
+    const userDocRef = doc(db, "users", user.uid);
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setUserRole(data.role || "staff");
+      } else {
+        setUserRole("staff");
+      }
+    }, (err) => {
+      console.error("Failed to subscribe to user role in inventory:", err);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,10 +76,30 @@ export default function InventoryPage() {
   // Modals state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [activeLabelItem, setActiveLabelItem] = useState<InventoryItem | null>(null);
+  
+  // Admin Edit Modal State
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [editItemName, setEditItemName] = useState("");
+  const [editSku, setEditSku] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editWarehouseLocation, setEditWarehouseLocation] = useState("");
+  const [editUnitOfMeasure, setEditUnitOfMeasure] = useState<"unit" | "set" | "meter" | "feet">("unit");
+  const [editReplacementValue, setEditReplacementValue] = useState("");
+  const [editCondition, setEditCondition] = useState<"Excellent" | "Good" | "Fair" | "Damaged">("Excellent");
+  const [editTotalQty, setEditTotalQty] = useState("");
+  const [editError, setEditError] = useState("");
+  const [editSuccess, setEditSuccess] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // Admin Delete State
+  const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   // Item Creation Form state
   const [itemName, setItemName] = useState("");
   const [sku, setSku] = useState("");
+  const [category, setCategory] = useState("");
+  const [warehouseLocation, setWarehouseLocation] = useState("");
   const [unitOfMeasure, setUnitOfMeasure] = useState<"unit" | "set" | "meter" | "feet">("unit");
   const [replacementValue, setReplacementValue] = useState("");
   const [condition, setCondition] = useState<"Excellent" | "Good" | "Fair" | "Damaged">("Excellent");
@@ -104,20 +146,21 @@ export default function InventoryPage() {
       return;
     }
 
-    if (!itemName.trim() || !sku.trim() || !replacementValue || !totalQty) {
+    const isValRequired = userRole === "admin";
+    if (!itemName.trim() || !sku.trim() || (isValRequired && !replacementValue) || !totalQty) {
       setFormError("Please populate all required fields.");
       return;
     }
 
     const qtyNumber = parseInt(totalQty);
-    const valueNumber = parseFloat(replacementValue);
+    const valueNumber = isValRequired ? parseFloat(replacementValue) : 0;
 
     if (isNaN(qtyNumber) || qtyNumber <= 0) {
       setFormError("Total Quantity must be a valid positive integer.");
       return;
     }
 
-    if (isNaN(valueNumber) || valueNumber < 0) {
+    if (isValRequired && (isNaN(valueNumber) || valueNumber < 0)) {
       setFormError("Replacement Value must be a non-negative number.");
       return;
     }
@@ -147,6 +190,8 @@ export default function InventoryPage() {
         quarantineQty: 0,        // Default initialize to 0
         workspaceId,             // STStrict multi-tenant security
         createdAt: new Date().toISOString(),
+        category: category.trim(),
+        warehouseLocation: warehouseLocation.trim()
       };
 
       await setDoc(inventoryRef, newItem);
@@ -156,6 +201,8 @@ export default function InventoryPage() {
       // Reset form
       setItemName("");
       setSku("");
+      setCategory("");
+      setWarehouseLocation("");
       setUnitOfMeasure("unit");
       setReplacementValue("");
       setCondition("Excellent");
@@ -171,6 +218,123 @@ export default function InventoryPage() {
       setFormError(err.message || "An error occurred while creating the asset.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Open Edit Modal state pre-population
+  const openEditModal = (item: InventoryItem) => {
+    setEditItem(item);
+    setEditItemName(item.name);
+    setEditSku(item.sku);
+    setEditCategory(item.category || "");
+    setEditWarehouseLocation(item.warehouseLocation || "");
+    setEditUnitOfMeasure(item.unitOfMeasure);
+    setEditReplacementValue(item.replacementValue.toString());
+    setEditCondition(item.condition);
+    setEditTotalQty(item.totalQty.toString());
+    setEditError("");
+    setEditSuccess("");
+  };
+
+  // Submit Handler for Asset Edit
+  const handleEditAsset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editItem || !workspaceId) return;
+
+    setEditError("");
+    setEditSuccess("");
+
+    if (!editItemName.trim() || !editSku.trim() || !editTotalQty) {
+      setEditError("Please populate all required fields.");
+      return;
+    }
+
+    const qtyNumber = parseInt(editTotalQty);
+    const valueNumber = parseFloat(editReplacementValue) || 0;
+
+    if (isNaN(qtyNumber) || qtyNumber <= 0) {
+      setEditError("Total Quantity must be a valid positive integer.");
+      return;
+    }
+
+    if (isNaN(valueNumber) || valueNumber < 0) {
+      setEditError("Replacement Value must be a non-negative number.");
+      return;
+    }
+
+    // SKU uniqueness check across active workspace (excluding current item)
+    const skuConflict = items.some(item => item.id !== editItem.id && item.sku.toLowerCase() === editSku.trim().toLowerCase());
+    if (skuConflict) {
+      setEditError(`Conflict: SKU "${editSku.trim().toUpperCase()}" is already assigned to another asset in this workspace.`);
+      return;
+    }
+
+    // Verify quantity bounds (cannot reduce below deployed + quarantined sum)
+    const deployed = editItem.deployedQty || 0;
+    const quarantined = editItem.quarantineQty || 0;
+    const calculatedWarehouseQty = qtyNumber - deployed - quarantined;
+
+    if (calculatedWarehouseQty < 0) {
+      setEditError(`Quantity Conflict: Reduced Total (${qtyNumber}) cannot support current Deployed (${deployed}) + Quarantined (${quarantined}) units.`);
+      return;
+    }
+
+    setEditSubmitting(true);
+
+    try {
+      const itemRef = doc(db, "inventory", editItem.id);
+      
+      const updatedFields: Partial<InventoryItem> = {
+        name: editItemName.trim(),
+        sku: editSku.trim().toUpperCase(),
+        category: editCategory.trim(),
+        warehouseLocation: editWarehouseLocation.trim(),
+        unitOfMeasure: editUnitOfMeasure,
+        replacementValue: valueNumber,
+        condition: editCondition,
+        totalQty: qtyNumber,
+        warehouseQty: calculatedWarehouseQty
+      };
+
+      await updateDoc(itemRef, updatedFields);
+
+      setEditSuccess("Asset updated successfully!");
+      setTimeout(() => {
+        setEditItem(null);
+        setEditSuccess("");
+      }, 1200);
+
+    } catch (err: any) {
+      console.error("Asset edit failed:", err);
+      setEditError(err.message || "An error occurred while updating the asset.");
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  // Submit Handler for Asset Delete
+  const handleDeleteAsset = async () => {
+    if (!deleteItem || !workspaceId) return;
+
+    setDeleteSubmitting(true);
+
+    try {
+      // Safety rule: Cannot delete items currently checked out
+      if ((deleteItem.deployedQty || 0) > 0) {
+        alert(`Deletion Denied: "${deleteItem.name}" has units currently checked out on active operations.`);
+        setDeleteItem(null);
+        return;
+      }
+
+      const itemRef = doc(db, "inventory", deleteItem.id);
+      await deleteDoc(itemRef);
+
+      setDeleteItem(null);
+    } catch (err: any) {
+      console.error("Asset deletion failed:", err);
+      alert(err.message || "An error occurred while deleting the asset.");
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -256,7 +420,7 @@ export default function InventoryPage() {
       </div>
 
       {/* METRICS SUMMARY CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 print:hidden">
+      <div className={`grid grid-cols-1 ${userRole === "admin" ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-4 print:hidden`}>
         {/* Metric 1 */}
         <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-4 flex items-center justify-between">
           <div className="space-y-1">
@@ -295,17 +459,19 @@ export default function InventoryPage() {
         </div>
 
         {/* Metric 4 */}
-        <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-4 flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Total Value</span>
-            <h4 className="text-2xl font-black font-heading tracking-tight text-cyan-400">
-              ₦{totalReplValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </h4>
+        {userRole === "admin" && (
+          <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-4 flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Total Value</span>
+              <h4 className="text-2xl font-black font-heading tracking-tight text-cyan-400">
+                ₦{totalReplValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </h4>
+            </div>
+            <div className="w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center">
+              <Coins className="size-4.5" />
+            </div>
           </div>
-          <div className="w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center">
-            <Coins className="size-4.5" />
-          </div>
-        </div>
+        )}
       </div>
 
       {/* DATA TABLE CONTAINER */}
@@ -348,7 +514,7 @@ export default function InventoryPage() {
                   <th className="px-6 py-3.5">SKU ID</th>
                   <th className="px-6 py-3.5">Item Name</th>
                   <th className="px-6 py-3.5">UOM</th>
-                  <th className="px-6 py-3.5">Repl. Value</th>
+                  {userRole === "admin" && <th className="px-6 py-3.5">Repl. Value</th>}
                   <th className="px-6 py-3.5">Quantities (WH / Dep / Qr)</th>
                   <th className="px-6 py-3.5">Condition</th>
                   <th className="px-6 py-3.5 text-right">Actions</th>
@@ -375,9 +541,11 @@ export default function InventoryPage() {
                     </td>
 
                     {/* Replacement Value */}
-                    <td className="px-6 py-4 text-zinc-300">
-                      ₦{item.replacementValue.toLocaleString()}
-                    </td>
+                    {userRole === "admin" && (
+                      <td className="px-6 py-4 text-zinc-300">
+                        ₦{item.replacementValue.toLocaleString()}
+                      </td>
+                    )}
 
                     {/* Quantities (Warehouse, Deployed, Quarantine) */}
                     <td className="px-6 py-4">
@@ -400,17 +568,42 @@ export default function InventoryPage() {
                       {renderConditionBadge(item.condition)}
                     </td>
 
-                    {/* Print Label Action */}
+                    {/* Actions Column */}
                     <td className="px-6 py-4 text-right">
-                      <Button 
-                        onClick={() => setActiveLabelItem(item)}
-                        variant="ghost"
-                        size="xs"
-                        className="text-zinc-400 hover:text-white hover:bg-zinc-800 border-zinc-800"
-                      >
-                        <QrCode className="size-3.5 mr-1" />
-                        Print Label
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          onClick={() => setActiveLabelItem(item)}
+                          variant="ghost"
+                          size="xs"
+                          className="text-zinc-400 hover:text-white hover:bg-zinc-800 border-zinc-800"
+                        >
+                          <QrCode className="size-3.5 mr-1" />
+                          Print Label
+                        </Button>
+
+                        {userRole === "admin" && (
+                          <>
+                            <Button 
+                              onClick={() => openEditModal(item)}
+                              variant="ghost"
+                              size="xs"
+                              className="text-zinc-400 hover:text-indigo-400 hover:bg-indigo-950/20 border-zinc-800"
+                            >
+                              <Pencil className="size-3.5 mr-1" />
+                              Edit
+                            </Button>
+                            <Button 
+                              onClick={() => setDeleteItem(item)}
+                              variant="ghost"
+                              size="xs"
+                              className="text-zinc-400 hover:text-red-400 hover:bg-red-950/20 border-zinc-800"
+                            >
+                              <Trash2 className="size-3.5 mr-1" />
+                              Delete
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -478,8 +671,41 @@ export default function InventoryPage() {
                 />
               </div>
 
-              {/* Unit & Replacement Value */}
+              {/* Category & Warehouse Location */}
               <div className="grid grid-cols-2 gap-4">
+                {/* Category */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-zinc-500" />
+                    Category
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Audio, Lighting"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                {/* Warehouse Location */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Building className="size-3.5 text-zinc-500" />
+                    Warehouse Location
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Shelf A-3, Bin 2"
+                    value={warehouseLocation}
+                    onChange={(e) => setWarehouseLocation(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Unit & Replacement Value */}
+              <div className={userRole === "admin" ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
                 {/* UOM select dropdown */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
@@ -500,22 +726,24 @@ export default function InventoryPage() {
                 </div>
 
                 {/* Replacement value input */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Coins className="size-3.5 text-zinc-500" />
-                    Replacement Value (₦) <span className="text-red-400">*</span>
-                  </label>
-                  <input 
-                    type="number" 
-                    required
-                    min="0"
-                    step="0.01"
-                    placeholder="e.g. 1500000"
-                    value={replacementValue}
-                    onChange={(e) => setReplacementValue(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
-                  />
-                </div>
+                {userRole === "admin" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                      <Coins className="size-3.5 text-zinc-500" />
+                      Replacement Value (₦) <span className="text-red-400">*</span>
+                    </label>
+                    <input 
+                      type="number" 
+                      required
+                      min="0"
+                      step="0.01"
+                      placeholder="e.g. 1500000"
+                      value={replacementValue}
+                      onChange={(e) => setReplacementValue(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Total Qty & Condition Selection */}
@@ -603,6 +831,279 @@ export default function InventoryPage() {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN EDIT ASSET DIALOG MODAL */}
+      {editItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-zinc-950/80 transition-all duration-300 animate-in fade-in print:hidden">
+          <div className="relative max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            {/* Top glowing line */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 to-cyan-400" />
+
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Pencil className="size-5 text-indigo-400" />
+                <h3 className="text-base font-bold text-white font-heading">
+                  Edit Asset Registry
+                </h3>
+              </div>
+              <button 
+                onClick={() => setEditItem(null)}
+                className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleEditAsset} className="p-6 space-y-4">
+              
+              {/* Asset Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                  <Box className="size-3.5 text-zinc-500" />
+                  Item Name <span className="text-red-400">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="e.g. JBL SRX828SP Active Subwoofer"
+                  value={editItemName}
+                  onChange={(e) => setEditItemName(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+
+              {/* SKU Code */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                  <Tag className="size-3.5 text-zinc-500" />
+                  SKU Alphanumeric <span className="text-red-400">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="e.g. SPK-JBL-SRX828"
+                  value={editSku}
+                  onChange={(e) => setEditSku(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors font-mono"
+                />
+              </div>
+
+              {/* Category & Warehouse Location */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Category */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-zinc-500" />
+                    Category
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Audio, Lighting"
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                {/* Warehouse Location */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Building className="size-3.5 text-zinc-500" />
+                    Warehouse Location
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Shelf A-3, Bin 2"
+                    value={editWarehouseLocation}
+                    onChange={(e) => setEditWarehouseLocation(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Unit & Replacement Value */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* UOM select dropdown */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Scale className="size-3.5 text-zinc-500" />
+                    Unit of Measure
+                  </label>
+                  <select 
+                    value={editUnitOfMeasure}
+                    onChange={(e) => setEditUnitOfMeasure(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
+                    style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', backgroundSize: '16px' }}
+                  >
+                    <option value="unit">Unit</option>
+                    <option value="set">Set</option>
+                    <option value="meter">Meter</option>
+                    <option value="feet">Feet</option>
+                  </select>
+                </div>
+
+                {/* Replacement value input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Coins className="size-3.5 text-zinc-500" />
+                    Replacement Value (₦) <span className="text-red-400">*</span>
+                  </label>
+                  <input 
+                    type="number" 
+                    required
+                    min="0"
+                    step="0.01"
+                    placeholder="e.g. 1500000"
+                    value={editReplacementValue}
+                    onChange={(e) => setEditReplacementValue(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Total Qty & Condition Selection */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Total qty input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Activity className="size-3.5 text-zinc-500" />
+                    Total Quantity <span className="text-red-400">*</span>
+                  </label>
+                  <input 
+                    type="number" 
+                    required
+                    min="1"
+                    placeholder="e.g. 4"
+                    value={editTotalQty}
+                    onChange={(e) => setEditTotalQty(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                {/* Baseline condition picker */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <ShieldCheck className="size-3.5 text-zinc-500" />
+                    Baseline Condition
+                  </label>
+                  <select 
+                    value={editCondition}
+                    onChange={(e) => setEditCondition(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
+                    style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', backgroundSize: '16px' }}
+                  >
+                    <option value="Excellent">Excellent</option>
+                    <option value="Good">Good</option>
+                    <option value="Fair">Fair</option>
+                    <option value="Damaged">Damaged</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Status Feedbacks */}
+              {editError && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
+                  <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              {editSuccess && (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
+                  <CheckCircle className="size-4 shrink-0 mt-0.5 animate-pulse" />
+                  <span>{editSuccess}</span>
+                </div>
+              )}
+
+              {/* Action trigger buttons */}
+              <div className="pt-4 flex gap-3 border-t border-zinc-800">
+                <Button 
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditItem(null)}
+                  disabled={editSubmitting}
+                  className="flex-1 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white h-11"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="flex-1 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-bold hover:opacity-95 shadow-lg shadow-indigo-600/10 h-11 border-none"
+                >
+                  {editSubmitting ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <RefreshCw className="size-4 animate-spin text-white" />
+                      Saving changes...
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-1">
+                      Save Changes
+                      <ArrowRight className="size-4" />
+                    </div>
+                  )}
+                </Button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN DELETE CONFIRMATION ALERT DIALOG */}
+      {deleteItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-zinc-950/80 transition-all duration-300 animate-in fade-in print:hidden">
+          <div className="relative max-w-sm w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-6 overflow-hidden animate-in zoom-in-95 duration-300">
+            {/* Destructive top glowing accent */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-red-500" />
+
+            <div className="flex items-center gap-3 text-red-400 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                <AlertCircle className="size-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white font-heading">
+                  Confirm Asset Deletion
+                </h3>
+                <span className="text-[10px] text-zinc-400 font-semibold font-mono">
+                  Collection: inventory/{deleteItem.id}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed mb-6">
+              Are you sure you want to permanently delete the asset <strong className="text-white">"{deleteItem.name}"</strong>? This will remove all registry and thermal labels. This action cannot be undone.
+            </p>
+
+            <div className="flex gap-3 pt-4 border-t border-zinc-800">
+              <Button 
+                onClick={() => setDeleteItem(null)}
+                variant="outline"
+                disabled={deleteSubmitting}
+                className="flex-1 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white h-10"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleDeleteAsset}
+                disabled={deleteSubmitting}
+                className="flex-1 bg-red-600 text-white font-bold hover:bg-red-700 h-10 border-none shadow-lg shadow-red-600/10"
+              >
+                {deleteSubmitting ? (
+                  <div className="flex items-center justify-center gap-1.5">
+                    <RefreshCw className="size-3.5 animate-spin text-white" />
+                    Deleting...
+                  </div>
+                ) : (
+                  "Delete Asset"
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}
