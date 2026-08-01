@@ -87,6 +87,9 @@ export default function SuperadminPage() {
   // Search parameters
   const [workspaceSearch, setWorkspaceSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [planFilter, setPlanFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [userStatusFilter, setUserStatusFilter] = useState("all");
 
   // Loading indicators
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
@@ -371,21 +374,86 @@ export default function SuperadminPage() {
     }
   };
 
-  // Active parameters filter
-  const filteredWorkspaces = workspaces.filter(
-    (ws) =>
+  // Helper to safely parse dates across strings, timestamps, and numbers
+  const parseExpiryDateHelper = (val: any): Date | null => {
+    if (!val) return null;
+    if (typeof val === "object" && val !== null) {
+      if (typeof val.toDate === "function") return val.toDate();
+      if (typeof val.seconds === "number") return new Date(val.seconds * 1000);
+    }
+    if (typeof val === "string") {
+      let formattedVal = val;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        formattedVal = `${val}T23:59:59`;
+      }
+      const d = new Date(formattedVal);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+  };
+
+  // 1. Dynamic Status Calculation hierarchical resolver
+  const getWorkspaceStatus = (
+    ws: Workspace,
+  ): "Suspended" | "Expired" | "Active" => {
+    const sub = ws.subscription || {};
+    const isActive = sub.isActive !== false;
+    if (!isActive) return "Suspended";
+
+    if (sub.validUntil) {
+      const parsedExpiry = parseExpiryDateHelper(sub.validUntil);
+      if (parsedExpiry && parsedExpiry.getTime() < Date.now()) {
+        return "Expired";
+      }
+    }
+
+    return "Active";
+  };
+
+  // Active parameters filter combining text search, plan filter, and dynamic status filter
+  const filteredWorkspaces = workspaces.filter((ws) => {
+    // A. Text query matching
+    const matchesSearch =
       ws.companyName.toLowerCase().includes(workspaceSearch.toLowerCase()) ||
       ws.id.toLowerCase().includes(workspaceSearch.toLowerCase()) ||
-      ws.ownerEmail.toLowerCase().includes(workspaceSearch.toLowerCase()),
-  );
+      ws.ownerEmail.toLowerCase().includes(workspaceSearch.toLowerCase());
 
-  const filteredUsers = globalUsers.filter(
-    (u) =>
+    if (!matchesSearch) return false;
+
+    // B. Subscription plan filtering
+    if (planFilter !== "all") {
+      const currentPlan = ws.subscription?.plan?.toLowerCase() || "basic";
+      if (currentPlan !== planFilter.toLowerCase()) return false;
+    }
+
+    // C. Dynamic computed status filtering
+    if (statusFilter !== "all") {
+      const computedStatus = getWorkspaceStatus(ws).toLowerCase();
+      if (computedStatus !== statusFilter.toLowerCase()) return false;
+    }
+
+    return true;
+  });
+
+  const filteredUsers = globalUsers.filter((u) => {
+    // A. Text query matching
+    const matchesSearch =
       u.name?.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.workspaceId.toLowerCase().includes(userSearch.toLowerCase()) ||
-      u.role?.toLowerCase().includes(userSearch.toLowerCase()),
-  );
+      u.role?.toLowerCase().includes(userSearch.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    // B. Access Status filtering
+    if (userStatusFilter !== "all") {
+      const isSuspended = u.isActive === false;
+      if (userStatusFilter === "Active" && isSuspended) return false;
+      if (userStatusFilter === "Suspended" && !isSuspended) return false;
+    }
+
+    return true;
+  });
 
   // Security authorization waiting block
   if (authLoading || checkingClaims) {
@@ -623,21 +691,67 @@ export default function SuperadminPage() {
           {activeTab === "workspaces" && (
             <div className="space-y-5">
               {/* Header block with search */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-900/30 border border-zinc-850 p-4 rounded-xl backdrop-blur-md">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-zinc-900/30 border border-zinc-850 p-4 rounded-xl backdrop-blur-md">
                 <span className="text-xs text-zinc-400 font-semibold">
                   Active Client Registry list and real-time subscription
                   parameters.
                 </span>
 
-                <div className="relative max-w-xs w-full">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500 animate-pulse" />
-                  <input
-                    type="text"
-                    placeholder="Search company names, IDs, owner emails..."
-                    value={workspaceSearch}
-                    onChange={(e) => setWorkspaceSearch(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 pl-9 pr-4 text-xs text-white placeholder-zinc-500 outline-none focus:border-indigo-500 transition-colors"
-                  />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+                  {/* Subscription Plan Filter Selector */}
+                  <div className="relative">
+                    <select
+                      value={planFilter}
+                      onChange={(e) => setPlanFilter(e.target.value)}
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 font-semibold outline-none cursor-pointer appearance-none pr-8 min-w-[120px]"
+                      style={{
+                        backgroundImage:
+                          "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')",
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "right 8px center",
+                        backgroundSize: "14px",
+                      }}
+                    >
+                      <option value="all">All Plans</option>
+                      <option value="trial">Trial</option>
+                      <option value="basic">Basic</option>
+                      <option value="premium">Premium</option>
+                      <option value="enterprise">Enterprise</option>
+                    </select>
+                  </div>
+
+                  {/* Service Status Filter Selector */}
+                  <div className="relative">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 font-semibold outline-none cursor-pointer appearance-none pr-8 min-w-[120px]"
+                      style={{
+                        backgroundImage:
+                          "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')",
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "right 8px center",
+                        backgroundSize: "14px",
+                      }}
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="active">Active</option>
+                      <option value="expired">Expired</option>
+                      <option value="suspended">Suspended</option>
+                    </select>
+                  </div>
+
+                  {/* Search Query bar */}
+                  <div className="relative max-w-xs w-full">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500 animate-pulse" />
+                    <input
+                      type="text"
+                      placeholder="Search company, ID..."
+                      value={workspaceSearch}
+                      onChange={(e) => setWorkspaceSearch(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 pl-9 pr-4 text-xs text-white placeholder-zinc-500 outline-none focus:border-indigo-500 transition-colors"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -722,15 +836,22 @@ export default function SuperadminPage() {
 
                               {/* Operational Status */}
                               <td className="px-6 py-4">
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${
-                                    activeState
-                                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                                      : "bg-red-500/10 border-red-500/20 text-red-400 animate-pulse"
-                                  }`}
-                                >
-                                  {activeState ? "Active" : "Suspended"}
-                                </span>
+                                {(() => {
+                                  const computedStatus = getWorkspaceStatus(ws);
+                                  return (
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${
+                                        computedStatus === "Suspended"
+                                          ? "bg-red-500/10 border-red-500/20 text-red-400 animate-pulse"
+                                          : computedStatus === "Expired"
+                                            ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                                            : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                      }`}
+                                    >
+                                      {computedStatus}
+                                    </span>
+                                  );
+                                })()}
                               </td>
 
                               {/* Edit triggers */}
@@ -770,20 +891,37 @@ export default function SuperadminPage() {
           {activeTab === "users" && (
             <div className="space-y-5">
               {/* Header block search */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-900/30 border border-zinc-850 p-4 rounded-xl backdrop-blur-md">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-zinc-900/30 border border-zinc-850 p-4 rounded-xl backdrop-blur-md">
                 <span className="text-xs text-zinc-400 font-semibold">
                   Real-time listing of all platform accounts and operator roles.
                 </span>
 
-                <div className="relative max-w-xs w-full">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500 animate-pulse" />
-                  <input
-                    type="text"
-                    placeholder="Search names, emails, workspace IDs, roles..."
-                    value={userSearch}
-                    onChange={(e) => setUserSearch(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 pl-9 pr-4 text-xs text-white placeholder-zinc-500 outline-none focus:border-indigo-500 transition-colors"
-                  />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+                  {/* Access Status Filter Selector */}
+                  <div className="relative">
+                    <select
+                      value={userStatusFilter}
+                      onChange={(e) => setUserStatusFilter(e.target.value)}
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 font-semibold outline-none cursor-pointer appearance-none pr-8 min-w-[120px]"
+                      style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', backgroundSize: '14px' }}
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="Active">Active</option>
+                      <option value="Suspended">Suspended</option>
+                    </select>
+                  </div>
+
+                  {/* Search Query bar */}
+                  <div className="relative max-w-xs w-full">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500 animate-pulse" />
+                    <input
+                      type="text"
+                      placeholder="Search names, emails, roles..."
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 pl-9 pr-4 text-xs text-white placeholder-zinc-500 outline-none focus:border-indigo-500 transition-colors"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1189,14 +1327,14 @@ export default function SuperadminPage() {
                 <Button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="w-full bg-zinc-850 text-zinc-300 hover:bg-zinc-800 font-bold h-11 border-none text-xs"
+                  className="w-[50%] bg-zinc-850 text-zinc-300 hover:bg-zinc-800 font-bold h-11 border-none text-xs"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={savingEditWorkspace}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold h-11 rounded-xl border-none shadow-lg text-xs"
+                  className="w-[50%] bg-indigo-600 hover:bg-indigo-500 text-white font-bold h-11 rounded-xl border-none shadow-lg text-xs"
                 >
                   {savingEditWorkspace ? (
                     <RefreshCw className="size-4 animate-spin mx-auto" />
