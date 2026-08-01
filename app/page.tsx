@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { getDoc, doc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
@@ -35,6 +35,16 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setFormError] = useState("");
   const [successMessage, setFormSuccess] = useState("");
+
+  // Check for suspended route guard redirection
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get("suspended") === "true") {
+        setFormError("Account Suspended: Your access has been revoked by an administrator. Please contact support.");
+      }
+    }
+  }, []);
 
   // LoggedIn Redirect Effect
   React.useEffect(() => {
@@ -147,6 +157,15 @@ export default function LoginPage() {
 
       if (userDoc.exists()) {
         const userData = userDoc.data();
+        
+        // Block Suspended Accounts
+        if (userData.isActive === false) {
+          await signOut(auth);
+          setFormError("Account Suspended: Your access has been revoked by an administrator. Please contact support.");
+          setLoading(false);
+          return;
+        }
+
         const role = userData.role || "admin"; // Default to admin for tenant creators
         const workspaceId = userData.workspaceId || null;
         const subData = userData.subscription || { isActive: true, plan: "Trial", validUntil: "N/A" };

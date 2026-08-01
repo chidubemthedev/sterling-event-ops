@@ -53,6 +53,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+
+        // Check if user is suspended in real-time inside Layout!
+        if (data.isActive === false) {
+          signOut(auth).then(() => {
+            clearAuth();
+            router.replace("/?suspended=true");
+          });
+          return;
+        }
+
         setProfile({
           name: data.name || "Workspace Member",
           role: data.role || "Staff"

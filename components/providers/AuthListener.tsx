@@ -75,7 +75,7 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
   const isSubscriptionActive = useSubscriptionActive();
 
   useEffect(() => {
-    let unsubscribeWorkspace: (() => void) | null = null;
+    let unsubscribeWorkspace: any = null;
 
     // Listen for authentication changes
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
@@ -102,6 +102,21 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
 
           if (userSnapshot.exists()) {
             const userData = userSnapshot.data();
+
+            // 1. User Account Status Check & Real-time Active Session Revocation Lock
+            if (userData.isActive === false) {
+              if (unsubscribeWorkspace) {
+                unsubscribeWorkspace();
+                unsubscribeWorkspace = null;
+              }
+              signOut(auth).then(() => {
+                clearAuth();
+                setLoading(false);
+                window.location.href = "/?suspended=true";
+              });
+              return;
+            }
+
             const currentWorkspaceId = userData.workspaceId || null;
 
             if (currentWorkspaceId) {
