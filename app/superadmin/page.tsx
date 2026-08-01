@@ -1042,14 +1042,14 @@ export default function SuperadminPage() {
                 <Button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="w-full bg-zinc-850 text-zinc-300 hover:bg-zinc-800 font-bold h-11 border-none text-xs"
+                  className="w-[50%] bg-zinc-850 text-zinc-300 hover:bg-zinc-800 font-bold h-11 border-none text-xs"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={submittingWorkspace}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold h-11 rounded-xl border-none shadow-lg text-xs"
+                  className="w-[50%] bg-indigo-600 hover:bg-indigo-500 text-white font-bold h-11 rounded-xl border-none shadow-lg text-xs"
                 >
                   {submittingWorkspace ? (
                     <RefreshCw className="size-4 animate-spin mx-auto" />
