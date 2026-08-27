@@ -975,14 +975,10 @@ export default function EventControlPage({ params }: PageProps) {
 
   if (authLoading || loading) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-zinc-950 text-white z-50">
-        <div className="relative flex items-center justify-center">
-          <div className="w-16 h-16 rounded-full border-t-2 border-b-2 border-indigo-500 animate-spin absolute" />
-          <div className="w-12 h-12 rounded-full border-r-2 border-l-2 border-cyan-400 animate-spin absolute duration-1000" />
-          <Sparkles className="size-6 text-indigo-400 animate-pulse" />
-        </div>
-        <p className="mt-8 text-sm font-semibold tracking-wider text-zinc-400 font-heading uppercase animate-pulse">
-          Opening Event Mission Control...
+      <div className="flex-1 h-full min-h-[50vh] flex flex-col items-center justify-center bg-[#f6f1e5]">
+        <div className="size-10 rounded-full border-3 border-[#800080]/20 border-t-[#800080] animate-spin" />
+        <p className="mt-4 text-xs font-semibold tracking-wide text-neutral-500 font-sans">
+          Opening Event Workspace...
         </p>
       </div>
     );
@@ -990,17 +986,17 @@ export default function EventControlPage({ params }: PageProps) {
 
   if (!eventData) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 text-white p-4 text-center">
-        <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mb-4">
+      <div className="flex-1 min-h-[50vh] flex flex-col items-center justify-center bg-[#f6f1e5] p-4 text-center">
+        <div className="size-12 rounded-full bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center mb-4">
           <AlertCircle className="size-6" />
         </div>
-        <h3 className="text-lg font-bold font-heading">Event Folder Not Found</h3>
-        <p className="text-xs text-zinc-400 mt-1 max-w-sm mb-6">
-          This project directory does not exist or has been archived from your multi-tenant workspace registry.
+        <h3 className="text-lg font-bold text-neutral-900">Event Not Found</h3>
+        <p className="text-xs text-neutral-500 mt-1 max-w-sm mb-6">
+          This event does not exist or has been archived from your workspace.
         </p>
-        <Button onClick={() => router.push("/dashboard/events")} variant="outline" className="border-zinc-800 text-zinc-300">
+        <Button onClick={() => router.push("/dashboard/events")} variant="outline" className="border-neutral-200 text-neutral-700 hover:bg-neutral-50">
           <ArrowLeft className="size-4 mr-2" />
-          Back to Directory
+          Back to Events
         </Button>
       </div>
     );

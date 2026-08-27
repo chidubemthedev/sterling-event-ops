@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { collection, onSnapshot, query, where, doc, setDoc, updateDoc, deleteDoc, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, where, doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { QRCodeSVG } from "qrcode.react";
 import { 
   Plus, 
@@ -16,19 +18,18 @@ import {
   Coins, 
   ShieldCheck, 
   AlertTriangle, 
-  Activity, 
   RefreshCw,
   Building,
   Tag,
   Scale,
-  DollarSign,
   AlertCircle,
   X,
-  Sparkles,
   CheckCircle,
   ArrowRight,
   Pencil,
-  Trash2
+  Trash2,
+  Filter,
+  Check
 } from "lucide-react";
 
 interface InventoryItem {
@@ -48,9 +49,19 @@ interface InventoryItem {
   warehouseLocation?: string;
 }
 
+const DEFAULT_CATEGORIES = [
+  "All Categories",
+  "Audio",
+  "Lighting",
+  "Staging",
+  "Furniture",
+  "Power & Rigging",
+  "Video & LED"
+];
+
 export default function InventoryPage() {
   const { workspaceId, user, loading: authLoading } = useWorkspaceStore();
-  const [userRole, setUserRole] = useState<string>("staff"); // Secure by default
+  const [userRole, setUserRole] = useState<string>("staff"); // Secure default
 
   // Real-time User Role Subscription
   useEffect(() => {
@@ -71,7 +82,17 @@ export default function InventoryPage() {
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [loadingItems, setLoadingWorkspaces] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState("All Categories");
+  const [loadingItems, setLoadingItems] = useState(true);
+
+  // Pagination state
+  const ITEMS_PER_PAGE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset pagination when search query or category filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory]);
 
   // Modals state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -112,7 +133,7 @@ export default function InventoryPage() {
   useEffect(() => {
     if (authLoading || !workspaceId) return;
 
-    setLoadingWorkspaces(true);
+    setLoadingItems(true);
     const q = query(
       collection(db, "inventory"),
       where("workspaceId", "==", workspaceId)
@@ -120,16 +141,16 @@ export default function InventoryPage() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: InventoryItem[] = [];
-      snapshot.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as InventoryItem);
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as InventoryItem);
       });
       // Sort client-side by createdAt descending
       list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setItems(list);
-      setLoadingWorkspaces(false);
+      setLoadingItems(false);
     }, (err) => {
       console.error("Firestore query error on inventory collection:", err);
-      setLoadingWorkspaces(false);
+      setLoadingItems(false);
     });
 
     return () => unsubscribe();
@@ -146,7 +167,7 @@ export default function InventoryPage() {
       return;
     }
 
-    const isValRequired = userRole === "admin";
+    const isValRequired = userRole === "admin" || userRole === "superadmin";
     if (!itemName.trim() || !sku.trim() || (isValRequired && !replacementValue) || !totalQty) {
       setFormError("Please populate all required fields.");
       return;
@@ -185,13 +206,13 @@ export default function InventoryPage() {
         replacementValue: valueNumber,
         condition,
         totalQty: qtyNumber,
-        warehouseQty: qtyNumber, // Set equal to totalQty on creation
-        deployedQty: 0,          // Default initialize to 0
-        quarantineQty: 0,        // Default initialize to 0
-        workspaceId,             // STStrict multi-tenant security
+        warehouseQty: qtyNumber, // Equal to totalQty initially
+        deployedQty: 0,
+        quarantineQty: 0,
+        workspaceId,             // Multi-tenant isolation
         createdAt: new Date().toISOString(),
-        category: category.trim(),
-        warehouseLocation: warehouseLocation.trim()
+        category: category.trim() || "General",
+        warehouseLocation: warehouseLocation.trim() || "Main Warehouse"
       };
 
       await setDoc(inventoryRef, newItem);
@@ -211,7 +232,7 @@ export default function InventoryPage() {
       setTimeout(() => {
         setIsNewModalOpen(false);
         setFormSuccess("");
-      }, 1500);
+      }, 1200);
 
     } catch (err: any) {
       console.error("Asset generation failed:", err);
@@ -221,7 +242,7 @@ export default function InventoryPage() {
     }
   };
 
-  // Open Edit Modal state pre-population
+  // Open Edit Modal
   const openEditModal = (item: InventoryItem) => {
     setEditItem(item);
     setEditItemName(item.name);
@@ -229,7 +250,7 @@ export default function InventoryPage() {
     setEditCategory(item.category || "");
     setEditWarehouseLocation(item.warehouseLocation || "");
     setEditUnitOfMeasure(item.unitOfMeasure);
-    setEditReplacementValue(item.replacementValue.toString());
+    setEditReplacementValue(item.replacementValue?.toString() || "0");
     setEditCondition(item.condition);
     setEditTotalQty(item.totalQty.toString());
     setEditError("");
@@ -287,8 +308,8 @@ export default function InventoryPage() {
       const updatedFields: Partial<InventoryItem> = {
         name: editItemName.trim(),
         sku: editSku.trim().toUpperCase(),
-        category: editCategory.trim(),
-        warehouseLocation: editWarehouseLocation.trim(),
+        category: editCategory.trim() || "General",
+        warehouseLocation: editWarehouseLocation.trim() || "Main Warehouse",
         unitOfMeasure: editUnitOfMeasure,
         replacementValue: valueNumber,
         condition: editCondition,
@@ -302,7 +323,7 @@ export default function InventoryPage() {
       setTimeout(() => {
         setEditItem(null);
         setEditSuccess("");
-      }, 1200);
+      }, 1000);
 
     } catch (err: any) {
       console.error("Asset edit failed:", err);
@@ -319,7 +340,6 @@ export default function InventoryPage() {
     setDeleteSubmitting(true);
 
     try {
-      // Safety rule: Cannot delete items currently checked out
       if ((deleteItem.deployedQty || 0) > 0) {
         alert(`Deletion Denied: "${deleteItem.name}" has units currently checked out on active operations.`);
         setDeleteItem(null);
@@ -338,19 +358,43 @@ export default function InventoryPage() {
     }
   };
 
-  // Filter items based on search query
-  const filteredItems = items.filter(item => 
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Compute category options combining defaults and existing item categories
+  const dynamicCategories = [
+    "All Categories",
+    ...Array.from(new Set([
+      ...DEFAULT_CATEGORIES.filter(c => c !== "All Categories"),
+      ...items.map(i => i.category).filter(Boolean) as string[]
+    ]))
+  ];
+
+  // Filter items based on search query and category filter
+  const filteredItems = items.filter(item => {
+    const matchesSearch = 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (item.warehouseLocation && item.warehouseLocation.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesCategory = 
+      selectedCategory === "All Categories" ||
+      (item.category && item.category.toLowerCase() === selectedCategory.toLowerCase());
+
+    return matchesSearch && matchesCategory;
+  });
+
+  // Client-side pagination logic
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
+  const paginatedItems = filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   // Render color-coded Condition Badge
   const renderConditionBadge = (cond: InventoryItem["condition"]) => {
-    let colorClasses = "bg-emerald-500/10 border-emerald-500/20 text-emerald-400";
-    if (cond === "Fair") {
-      colorClasses = "bg-amber-500/10 border-amber-500/20 text-amber-400";
+    let colorClasses = "bg-emerald-50 border-emerald-200/80 text-emerald-800";
+    if (cond === "Good") {
+      colorClasses = "bg-blue-50 border-blue-200/80 text-blue-800";
+    } else if (cond === "Fair") {
+      colorClasses = "bg-amber-50 border-amber-200/80 text-amber-800";
     } else if (cond === "Damaged") {
-      colorClasses = "bg-red-500/10 border-red-500/20 text-red-400";
+      colorClasses = "bg-rose-50 border-rose-200/80 text-rose-800";
     }
 
     return (
@@ -371,11 +415,15 @@ export default function InventoryPage() {
   const totalQuarantineQty = items.reduce((sum, item) => sum + item.quarantineQty, 0);
   const totalReplValue = items.reduce((sum, item) => sum + (item.replacementValue * item.totalQty), 0);
 
+  const isAdmin = userRole === "admin" || userRole === "superadmin";
+
   if (authLoading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center py-20 text-zinc-400 text-sm gap-2">
-        <RefreshCw className="size-6 animate-spin text-indigo-500" />
-        <span>Loading active session...</span>
+      <div className="flex-1 h-full min-h-[50vh] flex flex-col items-center justify-center">
+        <div className="size-10 rounded-full border-3 border-[#800080]/20 border-t-[#800080] animate-spin" />
+        <p className="mt-4 text-xs font-semibold tracking-wide text-neutral-500 font-sans">
+          Loading inventory records...
+        </p>
       </div>
     );
   }
@@ -383,182 +431,277 @@ export default function InventoryPage() {
   if (!workspaceId) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[400px]">
-        <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mb-4">
+        <div className="size-12 rounded-full bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center mb-4">
           <AlertCircle className="size-6" />
         </div>
-        <h3 className="text-lg font-bold text-white font-heading">No Workspace Session Active</h3>
-        <p className="text-xs text-zinc-400 mt-1 max-w-sm">
-          Please log out and sign in with an account associated with a workspace tenant to query operational inventory.
+        <h3 className="text-lg font-bold text-neutral-900 font-sans">No Workspace Session Active</h3>
+        <p className="text-xs text-neutral-500 mt-1 max-w-sm">
+          Please sign in with an account associated with an active workspace to access equipment inventory.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col space-y-8 p-6 md:p-8 bg-zinc-950/20 relative">
+    <div className="space-y-8 font-sans">
       
-      {/* SECTION HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800/60 pb-6 print:hidden">
+      {/* --- PAGE HEADER --- */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 print:hidden">
         <div>
-          <div className="flex items-center gap-2">
-            <Layers className="size-5 text-indigo-400" />
-            <h2 className="text-xl font-bold tracking-tight text-white font-heading uppercase">
-              Inventory Controls
-            </h2>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 border border-purple-200/80 text-[#800080] uppercase tracking-wider">
+              EQUIPMENT INVENTORY
+            </span>
           </div>
-          <p className="text-xs text-zinc-400 mt-1">
-            Track warehouse operational assets, generate thermal QR labels, and log inventory baselines for workspace: <code className="px-1 py-0.5 rounded bg-zinc-900 text-indigo-300 font-mono text-[10px]">{workspaceId}</code>.
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
+            Asset Catalog
+          </h1>
+          <p className="text-xs text-neutral-500 mt-1 max-w-2xl">
+            Manage rental equipment, generate thermal QR tags, track asset condition, and monitor warehouse stock levels.
           </p>
         </div>
+
         <Button 
           onClick={() => setIsNewModalOpen(true)}
-          className="bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-bold hover:opacity-90 shadow-lg shadow-indigo-600/15 h-10 border-none"
+          className="bg-[#800080] hover:bg-[#660066] text-white font-medium rounded-xl shadow-xs h-10 px-4 cursor-pointer self-start md:self-auto"
         >
           <Plus className="size-4 mr-2" />
-          New Asset
+          + Add New Asset
         </Button>
       </div>
 
-      {/* METRICS SUMMARY CARDS */}
-      <div className={`grid grid-cols-1 ${userRole === "admin" ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-4 print:hidden`}>
-        {/* Metric 1 */}
-        <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-4 flex items-center justify-between">
+      {/* --- METRIC SUMMARY CARDS --- */}
+      <div className={`grid grid-cols-1 ${isAdmin ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-4 print:hidden`}>
+        
+        {/* Metric 1: Unique SKUs */}
+        <div className="bg-white border border-neutral-200/80 rounded-xl p-5 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Asset SKUs</span>
-            <h4 className="text-2xl font-black font-heading tracking-tight text-white">{totalItemCount}</h4>
+            <span className="text-xs text-neutral-500 font-medium">Unique SKUs</span>
+            <h4 className="text-3xl font-bold text-neutral-900 tracking-tight">{totalItemCount}</h4>
           </div>
-          <div className="w-9 h-9 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
-            <Box className="size-4.5" />
+          <div className="size-11 rounded-xl bg-purple-50 border border-purple-100 text-[#800080] flex items-center justify-center shrink-0">
+            <Box className="size-5" />
           </div>
         </div>
 
-        {/* Metric 2 */}
-        <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-4 flex items-center justify-between">
+        {/* Metric 2: Total Item Quantity */}
+        <div className="bg-white border border-neutral-200/80 rounded-xl p-5 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Total Units</span>
-            <h4 className="text-2xl font-black font-heading tracking-tight text-white">{totalQtySum}</h4>
+            <span className="text-xs text-neutral-500 font-medium">Total Item Quantity</span>
+            <h4 className="text-3xl font-bold text-neutral-900 tracking-tight">{totalQtySum}</h4>
           </div>
-          <div className="w-9 h-9 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
-            <Activity className="size-4.5" />
+          <div className="size-11 rounded-xl bg-[#ffd700]/15 border border-[#ffd700]/40 text-[#800080] flex items-center justify-center shrink-0">
+            <Layers className="size-5" />
           </div>
         </div>
 
-        {/* Metric 3 */}
-        <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-4 flex items-center justify-between">
+        {/* Metric 3: In Maintenance / Missing */}
+        <div className="bg-white border border-neutral-200/80 rounded-xl p-5 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Quarantined</span>
-            <h4 className={`text-2xl font-black font-heading tracking-tight ${totalQuarantineQty > 0 ? "text-red-400" : "text-white"}`}>{totalQuarantineQty}</h4>
+            <span className="text-xs text-neutral-500 font-medium">In Maintenance / Missing</span>
+            <h4 className={`text-3xl font-bold tracking-tight ${totalQuarantineQty > 0 ? "text-rose-600" : "text-neutral-900"}`}>
+              {totalQuarantineQty}
+            </h4>
           </div>
-          <div className={`w-9 h-9 rounded-lg flex items-center justify-center border ${
+          <div className={`size-11 rounded-xl flex items-center justify-center shrink-0 border ${
             totalQuarantineQty > 0 
-              ? "bg-red-500/10 border-red-500/20 text-red-400 animate-pulse" 
-              : "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"
+              ? "bg-rose-50 border-rose-100 text-rose-600" 
+              : "bg-purple-50 border-purple-100 text-[#800080]"
           }`}>
-            <AlertTriangle className="size-4.5" />
+            <AlertTriangle className="size-5" />
           </div>
         </div>
 
-        {/* Metric 4 */}
-        {userRole === "admin" && (
-          <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-4 flex items-center justify-between">
+        {/* Metric 4: Total Catalog Worth (Role Guarded: Admin Only) */}
+        {isAdmin && (
+          <div className="bg-white border border-neutral-200/80 rounded-xl p-5 shadow-xs flex items-center justify-between">
             <div className="space-y-1">
-              <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Total Value</span>
-              <h4 className="text-2xl font-black font-heading tracking-tight text-cyan-400">
+              <span className="text-xs text-neutral-500 font-medium">Total Catalog Worth</span>
+              <h4 className="text-2xl lg:text-3xl font-bold text-neutral-900 tracking-tight truncate">
                 ₦{totalReplValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </h4>
             </div>
-            <div className="w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center">
-              <Coins className="size-4.5" />
+            <div className="size-11 rounded-xl bg-[#ffd700]/20 border border-[#ffd700]/50 text-[#800080] flex items-center justify-center shrink-0">
+              <Coins className="size-5 text-[#800080]" />
             </div>
           </div>
         )}
       </div>
 
-      {/* DATA TABLE CONTAINER */}
-      <div className="bg-zinc-900/20 border border-zinc-850 rounded-xl overflow-hidden shadow-xl print:hidden">
-        {/* Table Toolbar */}
-        <div className="px-6 py-4 border-b border-zinc-850 bg-zinc-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <Scale className="size-4.5 text-indigo-400" />
-            <h3 className="text-sm font-bold text-white font-heading">Active Asset Registries</h3>
-          </div>
-          {/* Search */}
-          <div className="relative max-w-xs w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
-            <input 
-              type="text" 
-              placeholder="Search items or SKUs..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-1.5 pl-9 pr-4 text-xs text-white placeholder-zinc-500 outline-none focus:border-indigo-500 transition-colors"
-            />
-          </div>
+      {/* --- SEARCH & CATEGORY FILTER BAR --- */}
+      <div className="bg-white border border-neutral-200/80 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4 print:hidden">
+        
+        {/* Search Input */}
+        <div className="relative w-full sm:max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-neutral-400" />
+          <Input 
+            type="text" 
+            placeholder="Search by asset name, SKU, or location..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-neutral-50/60 border-neutral-200 rounded-xl pl-10 pr-4 text-xs h-10 text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-[#800080]"
+          />
         </div>
 
-        {/* Table Body */}
-        <div className="overflow-x-auto min-h-[250px]">
+        {/* Category Filter Pills / Dropdown */}
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <Filter className="size-4 text-neutral-400 shrink-0" />
+          <div className="relative w-full sm:w-48">
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full bg-neutral-50/60 border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-800 outline-none focus:border-[#800080] transition-colors cursor-pointer appearance-none"
+              style={{
+                backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')",
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 10px center',
+                backgroundSize: '16px'
+              }}
+            >
+              {dynamicCategories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* --- INVENTORY TABLE CONTAINER --- */}
+      <div className="bg-white border border-neutral-200/80 rounded-xl shadow-xs overflow-hidden print:hidden">
+        
+        {/* Table Header / Title Bar */}
+        <div className="px-6 py-4 border-b border-neutral-200/80 bg-neutral-50/70 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Box className="size-4 text-[#800080]" />
+            <h3 className="text-sm font-bold text-neutral-900">
+              Asset Records
+            </h3>
+            <span className="text-xs text-neutral-500 font-medium">
+              ({filteredItems.length} {filteredItems.length === 1 ? "item" : "items"})
+            </span>
+          </div>
+
+          {selectedCategory !== "All Categories" && (
+            <Badge variant="purple" className="text-[10px]">
+              Filtered: {selectedCategory}
+            </Badge>
+          )}
+        </div>
+
+        {/* Table Data Outlet */}
+        <div className="overflow-x-auto min-h-[300px]">
           {loadingItems ? (
-            <div className="flex flex-col items-center justify-center py-20 text-zinc-500 text-sm gap-2">
-              <RefreshCw className="size-5 animate-spin text-indigo-500" />
+            <div className="flex flex-col items-center justify-center py-20 text-neutral-500 text-xs gap-3">
+              <div className="size-8 rounded-full border-2 border-[#800080]/20 border-t-[#800080] animate-spin" />
               <span>Querying warehouse records...</span>
             </div>
           ) : filteredItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-zinc-500 text-sm gap-2">
-              <Box className="size-8 text-zinc-700 mb-1" />
-              <span>No items registered in this workspace inventory yet.</span>
+            <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+              <div className="size-12 rounded-full bg-purple-50 border border-purple-100 text-[#800080] flex items-center justify-center mb-3">
+                <Box className="size-6" />
+              </div>
+              {items.length === 0 ? (
+                <>
+                  <h4 className="text-sm font-bold text-neutral-900">No inventory items added yet</h4>
+                  <p className="text-xs text-neutral-500 mt-1 max-w-sm">
+                    Click <strong>"+ Add New Asset"</strong> to register your first piece of equipment.
+                  </p>
+                  <Button
+                    onClick={() => setIsNewModalOpen(true)}
+                    className="mt-4 bg-[#800080] hover:bg-[#660066] text-white text-xs rounded-xl shadow-xs"
+                  >
+                    <Plus className="size-3.5 mr-1.5" />
+                    + Add New Asset
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <h4 className="text-sm font-bold text-neutral-900">No matching assets found</h4>
+                  <p className="text-xs text-neutral-500 mt-1 max-w-sm">
+                    No equipment matches your search query or selected category filter.
+                  </p>
+                  <Button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setSelectedCategory("All Categories");
+                    }}
+                    variant="outline"
+                    className="mt-4 border-neutral-200 text-xs rounded-xl"
+                  >
+                    Clear Filters
+                  </Button>
+                </>
+              )}
             </div>
           ) : (
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-zinc-850 bg-zinc-900/10 text-zinc-400 font-semibold uppercase tracking-wider">
+                <tr className="border-b border-neutral-200 bg-neutral-50 text-neutral-600 font-semibold uppercase tracking-wider text-[11px]">
                   <th className="px-6 py-3.5">SKU ID</th>
                   <th className="px-6 py-3.5">Item Name</th>
+                  <th className="px-6 py-3.5">Category</th>
                   <th className="px-6 py-3.5">UOM</th>
-                  {userRole === "admin" && <th className="px-6 py-3.5">Repl. Value</th>}
-                  <th className="px-6 py-3.5">Quantities (WH / Dep / Qr)</th>
+                  {isAdmin && <th className="px-6 py-3.5">Repl. Value</th>}
+                  <th className="px-6 py-3.5">Quantities (Total / WH / Dep / Maint)</th>
                   <th className="px-6 py-3.5">Condition</th>
                   <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-850/40">
-                {filteredItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-zinc-900/20 transition-colors duration-150">
+              <tbody className="divide-y divide-neutral-200/70 bg-white">
+                {paginatedItems.map((item) => (
+                  <tr key={item.id} className="hover:bg-neutral-50/60 transition-colors duration-150">
+                    
                     {/* SKU */}
                     <td className="px-6 py-4">
-                      <code className="text-xs font-mono font-bold text-indigo-400 bg-indigo-950/30 border border-indigo-900/30 px-2 py-0.5 rounded">
+                      <span className="text-xs font-mono font-bold text-[#800080] bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-md">
                         {item.sku}
-                      </code>
+                      </span>
                     </td>
 
                     {/* Name */}
-                    <td className="px-6 py-4 text-white font-semibold">
-                      {item.name}
+                    <td className="px-6 py-4">
+                      <span className="font-semibold text-neutral-900 block">{item.name}</span>
+                      {item.warehouseLocation && (
+                        <span className="text-[10px] text-neutral-500 flex items-center gap-1 mt-0.5">
+                          <Building className="size-3 text-neutral-400" />
+                          {item.warehouseLocation}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Category */}
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-neutral-100 text-neutral-700 border border-neutral-200/60">
+                        {item.category || "General"}
+                      </span>
                     </td>
 
                     {/* UOM */}
-                    <td className="px-6 py-4 text-zinc-400 capitalize">
+                    <td className="px-6 py-4 text-neutral-600 capitalize">
                       {item.unitOfMeasure}
                     </td>
 
-                    {/* Replacement Value */}
-                    {userRole === "admin" && (
-                      <td className="px-6 py-4 text-zinc-300">
-                        ₦{item.replacementValue.toLocaleString()}
+                    {/* Replacement Value (Role Guarded: Admin Only) */}
+                    {isAdmin && (
+                      <td className="px-6 py-4 text-neutral-800 font-medium">
+                        ₦{item.replacementValue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     )}
 
                     {/* Quantities (Warehouse, Deployed, Quarantine) */}
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-1 text-[11px]">
-                        <span className="font-bold text-white" title="Total">{item.totalQty}</span>
-                        <span className="text-zinc-500">U</span>
-                        <span className="text-zinc-600">|</span>
-                        <span className="text-emerald-400" title="In Warehouse">{item.warehouseQty}wh</span>
-                        <span className="text-zinc-600">|</span>
-                        <span className="text-cyan-400" title="Deployed">{item.deployedQty}dep</span>
-                        <span className="text-zinc-600">|</span>
-                        <span className={`font-semibold ${item.quarantineQty > 0 ? "text-red-400" : "text-zinc-500"}`} title="Quarantined">
-                          {item.quarantineQty}qu
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="font-bold text-neutral-900" title="Total Units">{item.totalQty}</span>
+                        <span className="text-neutral-400">total</span>
+                        <span className="text-neutral-300">·</span>
+                        <span className="text-emerald-700 font-semibold" title="In Warehouse">{item.warehouseQty} wh</span>
+                        <span className="text-neutral-300">·</span>
+                        <span className="text-purple-700 font-semibold" title="Currently Deployed">{item.deployedQty} dep</span>
+                        <span className="text-neutral-300">·</span>
+                        <span className={`font-semibold ${item.quarantineQty > 0 ? "text-rose-600" : "text-neutral-400"}`} title="In Maintenance">
+                          {item.quarantineQty} maint
                         </span>
                       </div>
                     </td>
@@ -570,36 +713,39 @@ export default function InventoryPage() {
 
                     {/* Actions Column */}
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-1.5">
+                        
+                        {/* Printable QR Code Label Button */}
                         <Button 
                           onClick={() => setActiveLabelItem(item)}
-                          variant="ghost"
+                          variant="outline"
                           size="xs"
-                          className="text-zinc-400 hover:text-white hover:bg-zinc-800 border-zinc-800"
+                          className="border-neutral-200 text-neutral-700 hover:bg-neutral-100 h-8 px-2.5 rounded-lg text-xs font-medium cursor-pointer"
                         >
-                          <QrCode className="size-3.5 mr-1" />
-                          Print Label
+                          <QrCode className="size-3.5 mr-1 text-[#800080]" />
+                          QR Label
                         </Button>
 
-                        {userRole === "admin" && (
+                        {/* Admin Action Buttons (Role Guarded: Admin Only) */}
+                        {isAdmin && (
                           <>
                             <Button 
                               onClick={() => openEditModal(item)}
                               variant="ghost"
                               size="xs"
-                              className="text-zinc-400 hover:text-indigo-400 hover:bg-indigo-950/20 border-zinc-800"
+                              className="text-neutral-600 hover:text-[#800080] hover:bg-purple-50 h-8 w-8 p-0 rounded-lg cursor-pointer"
+                              title="Edit Asset"
                             >
-                              <Pencil className="size-3.5 mr-1" />
-                              Edit
+                              <Pencil className="size-3.5" />
                             </Button>
                             <Button 
                               onClick={() => setDeleteItem(item)}
                               variant="ghost"
                               size="xs"
-                              className="text-zinc-400 hover:text-red-400 hover:bg-red-950/20 border-zinc-800"
+                              className="text-neutral-600 hover:text-rose-600 hover:bg-rose-50 h-8 w-8 p-0 rounded-lg cursor-pointer"
+                              title="Delete Asset"
                             >
-                              <Trash2 className="size-3.5 mr-1" />
-                              Delete
+                              <Trash2 className="size-3.5" />
                             </Button>
                           </>
                         )}
@@ -611,111 +757,155 @@ export default function InventoryPage() {
             </table>
           )}
         </div>
+
+        {/* Pagination Footer */}
+        {filteredItems.length > 0 && (
+          <div className="flex items-center justify-between border-t border-neutral-200/80 px-6 py-4 bg-white rounded-b-xl">
+            {/* Entry counter */}
+            <div className="text-xs text-neutral-500 font-medium">
+              Showing{" "}
+              <span className="font-semibold text-neutral-900">
+                {(currentPage - 1) * ITEMS_PER_PAGE + 1}
+              </span>
+              –
+              <span className="font-semibold text-neutral-900">
+                {Math.min(currentPage * ITEMS_PER_PAGE, filteredItems.length)}
+              </span>{" "}
+              of{" "}
+              <span className="font-semibold text-neutral-900">
+                {filteredItems.length}
+              </span>{" "}
+              total items
+            </div>
+
+            {/* Navigation Controls */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="h-8 px-3 text-xs border-neutral-200 text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 cursor-pointer"
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-neutral-600 font-medium px-2">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="h-8 px-3 text-xs border-neutral-200 text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 cursor-pointer"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* NEW ASSET REGISTRATION DIALOG MODAL */}
+      {/* --- NEW ASSET REGISTRATION DIALOG MODAL --- */}
       {isNewModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-zinc-950/80 transition-all duration-300 animate-in fade-in print:hidden">
-          <div className="relative max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            {/* Top glowing line */}
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 to-cyan-400" />
-
-            {/* Header */}
-            <div className="px-6 py-5 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs bg-black/40 transition-all duration-300 animate-in fade-in print:hidden">
+          <div className="relative max-w-md w-full bg-white border border-neutral-200/80 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-neutral-200/80 bg-neutral-50/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Box className="size-5 text-indigo-400" />
-                <h3 className="text-base font-bold text-white font-heading">
-                  Register New Workspace Asset
+                <div className="size-7 rounded-lg bg-purple-50 text-[#800080] border border-purple-100 flex items-center justify-center">
+                  <Box className="size-4" />
+                </div>
+                <h3 className="text-sm font-bold text-neutral-900">
+                  Add New Equipment Asset
                 </h3>
               </div>
               <button 
                 onClick={() => setIsNewModalOpen(false)}
-                className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                className="text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
               >
-                <X className="size-5" />
+                <X className="size-4" />
               </button>
             </div>
 
             {/* Form */}
-            <form onSubmit={handleCreateAsset} className="p-6 space-y-4">
+            <form onSubmit={handleCreateAsset} className="p-6 space-y-4 text-xs">
               
               {/* Asset Name */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                  <Box className="size-3.5 text-zinc-500" />
-                  Item Name <span className="text-red-400">*</span>
+                <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                  <Box className="size-3.5 text-neutral-400" />
+                  Item Name <span className="text-rose-500">*</span>
                 </label>
-                <input 
+                <Input 
                   type="text" 
                   required
-                  placeholder="e.g. JBL SRX828SP Active Subwoofer"
+                  placeholder="e.g. JBL SRX828SP Dual 18&quot; Subwoofer"
                   value={itemName}
                   onChange={(e) => setItemName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                  className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                 />
               </div>
 
               {/* SKU Code */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                  <Tag className="size-3.5 text-zinc-500" />
-                  SKU Alphanumeric <span className="text-red-400">*</span>
+                <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                  <Tag className="size-3.5 text-neutral-400" />
+                  SKU Alphanumeric <span className="text-rose-500">*</span>
                 </label>
-                <input 
+                <Input 
                   type="text" 
                   required
                   placeholder="e.g. SPK-JBL-SRX828"
                   value={sku}
                   onChange={(e) => setSku(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors font-mono"
+                  className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs font-mono uppercase focus-visible:ring-[#800080]"
                 />
               </div>
 
               {/* Category & Warehouse Location */}
               <div className="grid grid-cols-2 gap-4">
-                {/* Category */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Layers className="size-3.5 text-zinc-500" />
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-neutral-400" />
                     Category
                   </label>
-                  <input 
+                  <Input 
                     type="text" 
                     placeholder="e.g. Audio, Lighting"
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                    className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                   />
                 </div>
 
-                {/* Warehouse Location */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Building className="size-3.5 text-zinc-500" />
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <Building className="size-3.5 text-neutral-400" />
                     Warehouse Location
                   </label>
-                  <input 
+                  <Input 
                     type="text" 
-                    placeholder="e.g. Shelf A-3, Bin 2"
+                    placeholder="e.g. Rack A-3, Bin 2"
                     value={warehouseLocation}
                     onChange={(e) => setWarehouseLocation(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                    className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                   />
                 </div>
               </div>
 
-              {/* Unit & Replacement Value */}
-              <div className={userRole === "admin" ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
-                {/* UOM select dropdown */}
+              {/* Unit of Measure & Replacement Value */}
+              <div className={isAdmin ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Scale className="size-3.5 text-zinc-500" />
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <Scale className="size-3.5 text-neutral-400" />
                     Unit of Measure
                   </label>
                   <select 
                     value={unitOfMeasure}
                     onChange={(e) => setUnitOfMeasure(e.target.value as any)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
+                    className="w-full bg-neutral-50/60 border border-neutral-200 rounded-xl px-3 h-10 text-xs text-neutral-900 outline-none focus:border-[#800080] transition-colors cursor-pointer appearance-none"
                     style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', backgroundSize: '16px' }}
                   >
                     <option value="unit">Unit</option>
@@ -725,14 +915,13 @@ export default function InventoryPage() {
                   </select>
                 </div>
 
-                {/* Replacement value input */}
-                {userRole === "admin" && (
+                {isAdmin && (
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                      <Coins className="size-3.5 text-zinc-500" />
-                      Replacement Value (₦) <span className="text-red-400">*</span>
+                    <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                      <Coins className="size-3.5 text-neutral-400" />
+                      Replacement Value (₦) <span className="text-rose-500">*</span>
                     </label>
-                    <input 
+                    <Input 
                       type="number" 
                       required
                       min="0"
@@ -740,7 +929,7 @@ export default function InventoryPage() {
                       placeholder="e.g. 1500000"
                       value={replacementValue}
                       onChange={(e) => setReplacementValue(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                      className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                     />
                   </div>
                 )}
@@ -748,33 +937,31 @@ export default function InventoryPage() {
 
               {/* Total Qty & Condition Selection */}
               <div className="grid grid-cols-2 gap-4">
-                {/* Total qty input */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Activity className="size-3.5 text-zinc-500" />
-                    Total Quantity <span className="text-red-400">*</span>
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-neutral-400" />
+                    Total Quantity <span className="text-rose-500">*</span>
                   </label>
-                  <input 
+                  <Input 
                     type="number" 
                     required
                     min="1"
                     placeholder="e.g. 4"
                     value={totalQty}
                     onChange={(e) => setTotalQty(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                    className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                   />
                 </div>
 
-                {/* Baseline condition radio box/picker */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <ShieldCheck className="size-3.5 text-zinc-500" />
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <ShieldCheck className="size-3.5 text-neutral-400" />
                     Baseline Condition
                   </label>
                   <select 
                     value={condition}
                     onChange={(e) => setCondition(e.target.value as any)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
+                    className="w-full bg-neutral-50/60 border border-neutral-200 rounded-xl px-3 h-10 text-xs text-neutral-900 outline-none focus:border-[#800080] transition-colors cursor-pointer appearance-none"
                     style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', backgroundSize: '16px' }}
                   >
                     <option value="Excellent">Excellent</option>
@@ -787,42 +974,42 @@ export default function InventoryPage() {
 
               {/* Status Feedbacks */}
               {formError && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-xs flex items-start gap-2">
                   <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                   <span>{formError}</span>
                 </div>
               )}
 
               {formSuccess && (
-                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
-                  <CheckCircle className="size-4 shrink-0 mt-0.5 animate-pulse" />
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs flex items-start gap-2">
+                  <CheckCircle className="size-4 shrink-0 mt-0.5" />
                   <span>{formSuccess}</span>
                 </div>
               )}
 
               {/* Action trigger buttons */}
-              <div className="pt-4 flex gap-3 border-t border-zinc-800">
+              <div className="pt-3 flex gap-3 border-t border-neutral-200/80">
                 <Button 
                   type="button"
                   variant="outline"
                   onClick={() => setIsNewModalOpen(false)}
                   disabled={submitting}
-                  className="flex-1 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white h-11"
+                  className="flex-1 border-neutral-200 text-neutral-600 hover:bg-neutral-50 h-10 rounded-xl"
                 >
                   Cancel
                 </Button>
                 <Button 
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-bold hover:opacity-95 shadow-lg shadow-indigo-600/10 h-11 border-none"
+                  className="flex-1 bg-[#800080] hover:bg-[#660066] text-white font-medium h-10 rounded-xl shadow-xs"
                 >
                   {submitting ? (
                     <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="size-4 animate-spin text-white" />
+                      <div className="size-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                       Registering...
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-1">
+                    <div className="flex items-center justify-center gap-1.5">
                       Register Asset
                       <ArrowRight className="size-4" />
                     </div>
@@ -835,109 +1022,106 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* ADMIN EDIT ASSET DIALOG MODAL */}
+      {/* --- ADMIN EDIT ASSET DIALOG MODAL --- */}
       {editItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-zinc-950/80 transition-all duration-300 animate-in fade-in print:hidden">
-          <div className="relative max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            {/* Top glowing line */}
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 to-cyan-400" />
-
-            {/* Header */}
-            <div className="px-6 py-5 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs bg-black/40 transition-all duration-300 animate-in fade-in print:hidden">
+          <div className="relative max-w-md w-full bg-white border border-neutral-200/80 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-neutral-200/80 bg-neutral-50/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Pencil className="size-5 text-indigo-400" />
-                <h3 className="text-base font-bold text-white font-heading">
-                  Edit Asset Registry
+                <div className="size-7 rounded-lg bg-purple-50 text-[#800080] border border-purple-100 flex items-center justify-center">
+                  <Pencil className="size-4" />
+                </div>
+                <h3 className="text-sm font-bold text-neutral-900">
+                  Edit Equipment Asset
                 </h3>
               </div>
               <button 
                 onClick={() => setEditItem(null)}
-                className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                className="text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
               >
-                <X className="size-5" />
+                <X className="size-4" />
               </button>
             </div>
 
             {/* Form */}
-            <form onSubmit={handleEditAsset} className="p-6 space-y-4">
+            <form onSubmit={handleEditAsset} className="p-6 space-y-4 text-xs">
               
               {/* Asset Name */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                  <Box className="size-3.5 text-zinc-500" />
-                  Item Name <span className="text-red-400">*</span>
+                <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                  <Box className="size-3.5 text-neutral-400" />
+                  Item Name <span className="text-rose-500">*</span>
                 </label>
-                <input 
+                <Input 
                   type="text" 
                   required
-                  placeholder="e.g. JBL SRX828SP Active Subwoofer"
+                  placeholder="e.g. JBL SRX828SP Dual 18&quot; Subwoofer"
                   value={editItemName}
                   onChange={(e) => setEditItemName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                  className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                 />
               </div>
 
               {/* SKU Code */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                  <Tag className="size-3.5 text-zinc-500" />
-                  SKU Alphanumeric <span className="text-red-400">*</span>
+                <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                  <Tag className="size-3.5 text-neutral-400" />
+                  SKU Alphanumeric <span className="text-rose-500">*</span>
                 </label>
-                <input 
+                <Input 
                   type="text" 
                   required
                   placeholder="e.g. SPK-JBL-SRX828"
                   value={editSku}
                   onChange={(e) => setEditSku(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors font-mono"
+                  className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs font-mono uppercase focus-visible:ring-[#800080]"
                 />
               </div>
 
               {/* Category & Warehouse Location */}
               <div className="grid grid-cols-2 gap-4">
-                {/* Category */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Layers className="size-3.5 text-zinc-500" />
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-neutral-400" />
                     Category
                   </label>
-                  <input 
+                  <Input 
                     type="text" 
                     placeholder="e.g. Audio, Lighting"
                     value={editCategory}
                     onChange={(e) => setEditCategory(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                    className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                   />
                 </div>
 
-                {/* Warehouse Location */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Building className="size-3.5 text-zinc-500" />
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <Building className="size-3.5 text-neutral-400" />
                     Warehouse Location
                   </label>
-                  <input 
+                  <Input 
                     type="text" 
-                    placeholder="e.g. Shelf A-3, Bin 2"
+                    placeholder="e.g. Rack A-3, Bin 2"
                     value={editWarehouseLocation}
                     onChange={(e) => setEditWarehouseLocation(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                    className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                   />
                 </div>
               </div>
 
-              {/* Unit & Replacement Value */}
+              {/* Unit of Measure & Replacement Value */}
               <div className="grid grid-cols-2 gap-4">
-                {/* UOM select dropdown */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Scale className="size-3.5 text-zinc-500" />
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <Scale className="size-3.5 text-neutral-400" />
                     Unit of Measure
                   </label>
                   <select 
                     value={editUnitOfMeasure}
                     onChange={(e) => setEditUnitOfMeasure(e.target.value as any)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
+                    className="w-full bg-neutral-50/60 border border-neutral-200 rounded-xl px-3 h-10 text-xs text-neutral-900 outline-none focus:border-[#800080] transition-colors cursor-pointer appearance-none"
                     style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', backgroundSize: '16px' }}
                   >
                     <option value="unit">Unit</option>
@@ -947,13 +1131,12 @@ export default function InventoryPage() {
                   </select>
                 </div>
 
-                {/* Replacement value input */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Coins className="size-3.5 text-zinc-500" />
-                    Replacement Value (₦) <span className="text-red-400">*</span>
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <Coins className="size-3.5 text-neutral-400" />
+                    Replacement Value (₦) <span className="text-rose-500">*</span>
                   </label>
-                  <input 
+                  <Input 
                     type="number" 
                     required
                     min="0"
@@ -961,40 +1144,38 @@ export default function InventoryPage() {
                     placeholder="e.g. 1500000"
                     value={editReplacementValue}
                     onChange={(e) => setEditReplacementValue(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                    className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                   />
                 </div>
               </div>
 
               {/* Total Qty & Condition Selection */}
               <div className="grid grid-cols-2 gap-4">
-                {/* Total qty input */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Activity className="size-3.5 text-zinc-500" />
-                    Total Quantity <span className="text-red-400">*</span>
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-neutral-400" />
+                    Total Quantity <span className="text-rose-500">*</span>
                   </label>
-                  <input 
+                  <Input 
                     type="number" 
                     required
                     min="1"
                     placeholder="e.g. 4"
                     value={editTotalQty}
                     onChange={(e) => setEditTotalQty(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 transition-colors"
+                    className="bg-neutral-50/60 border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                   />
                 </div>
 
-                {/* Baseline condition picker */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <ShieldCheck className="size-3.5 text-zinc-500" />
+                  <label className="font-semibold text-neutral-700 flex items-center gap-1.5">
+                    <ShieldCheck className="size-3.5 text-neutral-400" />
                     Baseline Condition
                   </label>
                   <select 
                     value={editCondition}
                     onChange={(e) => setEditCondition(e.target.value as any)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer appearance-none"
+                    className="w-full bg-neutral-50/60 border border-neutral-200 rounded-xl px-3 h-10 text-xs text-neutral-900 outline-none focus:border-[#800080] transition-colors cursor-pointer appearance-none"
                     style={{ backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', backgroundSize: '16px' }}
                   >
                     <option value="Excellent">Excellent</option>
@@ -1007,42 +1188,42 @@ export default function InventoryPage() {
 
               {/* Status Feedbacks */}
               {editError && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-xs flex items-start gap-2">
                   <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                   <span>{editError}</span>
                 </div>
               )}
 
               {editSuccess && (
-                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
-                  <CheckCircle className="size-4 shrink-0 mt-0.5 animate-pulse" />
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs flex items-start gap-2">
+                  <CheckCircle className="size-4 shrink-0 mt-0.5" />
                   <span>{editSuccess}</span>
                 </div>
               )}
 
               {/* Action trigger buttons */}
-              <div className="pt-4 flex gap-3 border-t border-zinc-800">
+              <div className="pt-3 flex gap-3 border-t border-neutral-200/80">
                 <Button 
                   type="button"
                   variant="outline"
                   onClick={() => setEditItem(null)}
                   disabled={editSubmitting}
-                  className="flex-1 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white h-11"
+                  className="flex-1 border-neutral-200 text-neutral-600 hover:bg-neutral-50 h-10 rounded-xl"
                 >
                   Cancel
                 </Button>
                 <Button 
                   type="submit"
                   disabled={editSubmitting}
-                  className="flex-1 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-bold hover:opacity-95 shadow-lg shadow-indigo-600/10 h-11 border-none"
+                  className="flex-1 bg-[#800080] hover:bg-[#660066] text-white font-medium h-10 rounded-xl shadow-xs"
                 >
                   {editSubmitting ? (
                     <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="size-4 animate-spin text-white" />
+                      <div className="size-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                       Saving changes...
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-1">
+                    <div className="flex items-center justify-center gap-1.5">
                       Save Changes
                       <ArrowRight className="size-4" />
                     </div>
@@ -1055,48 +1236,46 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* ADMIN DELETE CONFIRMATION ALERT DIALOG */}
+      {/* --- ADMIN DELETE CONFIRMATION ALERT DIALOG --- */}
       {deleteItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-zinc-950/80 transition-all duration-300 animate-in fade-in print:hidden">
-          <div className="relative max-w-sm w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-6 overflow-hidden animate-in zoom-in-95 duration-300">
-            {/* Destructive top glowing accent */}
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-red-500" />
-
-            <div className="flex items-center gap-3 text-red-400 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                <AlertCircle className="size-5 animate-pulse" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs bg-black/40 transition-all duration-300 animate-in fade-in print:hidden">
+          <div className="relative max-w-sm w-full bg-white border border-neutral-200/80 rounded-2xl shadow-xl p-6 overflow-hidden animate-in zoom-in-95 duration-200">
+            
+            <div className="flex items-center gap-3 text-rose-600 mb-4">
+              <div className="size-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
+                <AlertCircle className="size-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white font-heading">
+                <h3 className="text-sm font-bold text-neutral-900">
                   Confirm Asset Deletion
                 </h3>
-                <span className="text-[10px] text-zinc-400 font-semibold font-mono">
-                  Collection: inventory/{deleteItem.id}
+                <span className="text-[10px] text-neutral-500 font-mono">
+                  SKU: {deleteItem.sku}
                 </span>
               </div>
             </div>
 
-            <p className="text-xs text-zinc-300 leading-relaxed mb-6">
-              Are you sure you want to permanently delete the asset <strong className="text-white">"{deleteItem.name}"</strong>? This will remove all registry and thermal labels. This action cannot be undone.
+            <p className="text-xs text-neutral-600 leading-relaxed mb-6">
+              Are you sure you want to permanently delete the asset <strong className="text-neutral-900">"{deleteItem.name}"</strong>? This will remove all registry and thermal labels. This action cannot be undone.
             </p>
 
-            <div className="flex gap-3 pt-4 border-t border-zinc-800">
+            <div className="flex gap-3 pt-3 border-t border-neutral-200/80">
               <Button 
                 onClick={() => setDeleteItem(null)}
                 variant="outline"
                 disabled={deleteSubmitting}
-                className="flex-1 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white h-10"
+                className="flex-1 border-neutral-200 text-neutral-700 hover:bg-neutral-50 h-10 rounded-xl text-xs"
               >
                 Cancel
               </Button>
               <Button 
                 onClick={handleDeleteAsset}
                 disabled={deleteSubmitting}
-                className="flex-1 bg-red-600 text-white font-bold hover:bg-red-700 h-10 border-none shadow-lg shadow-red-600/10"
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-medium h-10 rounded-xl text-xs shadow-xs"
               >
                 {deleteSubmitting ? (
                   <div className="flex items-center justify-center gap-1.5">
-                    <RefreshCw className="size-3.5 animate-spin text-white" />
+                    <div className="size-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                     Deleting...
                   </div>
                 ) : (
@@ -1108,39 +1287,41 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* PIXEL-PERFECT 50mm x 25mm THERMAL QR LABEL MODAL PREVIEW */}
+      {/* --- 50mm x 25mm THERMAL QR LABEL MODAL PREVIEW --- */}
       {activeLabelItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-zinc-950/80 transition-all duration-300 animate-in fade-in print:bg-white print:backdrop-blur-none print:absolute print:inset-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs bg-black/40 transition-all duration-300 animate-in fade-in print:bg-white print:backdrop-blur-none print:absolute print:inset-0">
           
           {/* Main Dialog Panel (hidden when printing) */}
-          <div className="relative max-w-sm w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl backdrop-blur-md animate-in zoom-in-95 duration-300 print:hidden">
+          <div className="relative max-w-sm w-full bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-xl animate-in zoom-in-95 duration-200 print:hidden">
             
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-4 mb-6">
+            <div className="flex items-center justify-between border-b border-neutral-200/80 pb-3 mb-4">
               <div className="flex items-center gap-2">
-                <QrCode className="size-5 text-indigo-400" />
-                <h3 className="text-sm font-bold text-white font-heading uppercase">
-                  Thermal Label Preview
+                <div className="size-7 rounded-lg bg-purple-50 text-[#800080] border border-purple-100 flex items-center justify-center">
+                  <QrCode className="size-4" />
+                </div>
+                <h3 className="text-sm font-bold text-neutral-900">
+                  Thermal Label Preview (50mm x 25mm)
                 </h3>
               </div>
               <button 
                 onClick={() => setActiveLabelItem(null)}
-                className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                className="text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
               >
-                <X className="size-5" />
+                <X className="size-4" />
               </button>
             </div>
 
             {/* Sub-label explanation */}
-            <p className="text-xs text-zinc-400 mb-6 leading-relaxed">
-              Standard 50mm x 25mm industrial barcode roll simulation. Rendered in pixel-perfect high-definition SVG vector format.
+            <p className="text-xs text-neutral-500 mb-5 leading-relaxed">
+              Standard 50mm x 25mm industrial barcode roll simulation. Rendered in high-definition vector SVG format.
             </p>
 
-            {/* 1. THERMAL ROLL PREVIEW FRAME (EXACTLY 50mm x 25mm PHYSICAL MEASUREMENT) */}
-            <div className="flex items-center justify-center bg-zinc-950 py-10 rounded-xl border border-zinc-850/80 mb-6">
+            {/* 1. THERMAL ROLL PREVIEW FRAME (EXACTLY 50mm x 25mm) */}
+            <div className="flex items-center justify-center bg-neutral-100/80 py-8 rounded-xl border border-neutral-200 mb-5">
               <div 
                 id="thermal-label-frame"
-                className="bg-white text-black p-2 border border-zinc-300 shadow-[0_0_15px_rgba(255,255,255,0.05)] overflow-hidden flex items-center justify-between box-border rounded select-none select-all relative print:border-none print:shadow-none print:m-0"
+                className="bg-white text-black p-2 border border-neutral-300 shadow-sm overflow-hidden flex items-center justify-between box-border rounded select-none select-all relative print:border-none print:shadow-none print:m-0"
                 style={{ 
                   width: "50mm", 
                   height: "25mm",
@@ -1150,17 +1331,16 @@ export default function InventoryPage() {
               >
                 {/* Left side text columns */}
                 <div className="flex flex-col justify-between h-full max-w-[62%] select-none">
-                  {/* Category icon + Item Name Group */}
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-1">
-                      <Box className="size-3.5 text-black shrink-0" />
-                      <span className="text-[7.5px] uppercase tracking-wide text-zinc-500 font-bold font-mono">
+                      <Box className="size-3 text-black shrink-0" />
+                      <span className="text-[7.5px] uppercase tracking-wide text-neutral-500 font-bold font-mono">
                         Asset Item
                       </span>
                     </div>
-                    {/* Item Name (Clipped to prevent box-overflow) */}
+                    {/* Item Name */}
                     <h5 
-                      className="text-[9.5px] font-black leading-tight text-black line-clamp-2 uppercase break-words pr-0.5 tracking-tight font-heading"
+                      className="text-[9.5px] font-black leading-tight text-black line-clamp-2 uppercase break-words pr-0.5 tracking-tight"
                       title={activeLabelItem.name}
                     >
                       {activeLabelItem.name}
@@ -1168,7 +1348,7 @@ export default function InventoryPage() {
                   </div>
                   
                   {/* SKU code text */}
-                  <code className="text-[7.5px] font-mono font-black text-black leading-none bg-zinc-100 px-1 py-0.5 rounded border border-zinc-200">
+                  <code className="text-[7.5px] font-mono font-black text-black leading-none bg-neutral-100 px-1 py-0.5 rounded border border-neutral-200">
                     {activeLabelItem.sku}
                   </code>
                 </div>
@@ -1192,26 +1372,26 @@ export default function InventoryPage() {
             </div>
 
             {/* Print trigger CTA */}
-            <div className="flex gap-3 pt-4 border-t border-zinc-800">
+            <div className="flex gap-3 pt-3 border-t border-neutral-200/80">
               <Button 
                 onClick={() => setActiveLabelItem(null)}
                 variant="outline"
-                className="flex-1 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white h-10"
+                className="flex-1 border-neutral-200 text-neutral-700 hover:bg-neutral-50 h-10 rounded-xl text-xs"
               >
                 Close Preview
               </Button>
               <Button 
                 onClick={triggerPrintLabel}
-                className="flex-1 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-bold hover:opacity-95 shadow-lg h-10 border-none"
+                className="flex-1 bg-[#800080] hover:bg-[#660066] text-white font-medium h-10 rounded-xl shadow-xs text-xs"
               >
-                <Printer className="size-4 mr-1.5 animate-pulse" />
+                <Printer className="size-3.5 mr-1.5" />
                 Print Label
               </Button>
             </div>
 
           </div>
 
-          {/* 2. PRINT-SPECIFIC CSS WRAPPER (Renders ONLY the raw label container during physical print) */}
+          {/* 2. PRINT-SPECIFIC CSS WRAPPER (Renders ONLY the raw label during physical print) */}
           <div className="hidden print:flex print:fixed print:inset-0 print:items-center print:justify-center print:bg-white print:z-[9999]">
             <div 
               className="bg-white text-black p-2 flex items-center justify-between box-border"
@@ -1231,7 +1411,7 @@ export default function InventoryPage() {
                       Asset Item
                     </span>
                   </div>
-                  <h5 className="text-[9.5px] font-black leading-tight text-black line-clamp-2 uppercase break-words pr-0.5 tracking-tight font-heading">
+                  <h5 className="text-[9.5px] font-black leading-tight text-black line-clamp-2 uppercase break-words pr-0.5 tracking-tight">
                     {activeLabelItem.name}
                   </h5>
                 </div>
@@ -1260,13 +1440,12 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Global CSS Inject to configure print-layout sizes strictly */}
+      {/* Global CSS for 50mm x 25mm thermal print layout */}
       <style jsx global>{`
         @media print {
           body * {
             visibility: hidden !important;
           }
-          /* Keep only our printable label containers visible and centered */
           html, body {
             background: #ffffff !important;
             color: #000000 !important;
@@ -1278,7 +1457,6 @@ export default function InventoryPage() {
           .fixed.inset-0, .fixed.inset-0 * {
             visibility: visible !important;
           }
-          /* Hide all other elements inside the layout container */
           .fixed.inset-0 > div:not(.print\\:flex) {
             display: none !important;
             visibility: hidden !important;

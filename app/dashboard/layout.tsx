@@ -21,7 +21,6 @@ import {
   Sliders,
   CreditCard,
   AlertTriangle,
-  Sparkles,
 } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -138,23 +137,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Helper check for superadmin view access
   const showSuperadminConsole = user?.email === "chukwudubem7@gmail.com" || profile?.role === "superadmin";
 
-  // Prevent flash content leaks during verification loading state
-  if (loading || !user) {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#f6f1e5] text-neutral-900 z-50">
-        <div className="size-12 rounded-full border-3 border-[#800080]/20 border-t-[#800080] animate-spin" />
-        <p className="mt-6 text-sm font-semibold tracking-wide text-neutral-600 animate-pulse font-sans">
-          Securing Workspace Credentials...
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-[#faf8f5] text-neutral-900 flex flex-col md:flex-row relative font-sans overflow-x-hidden">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#f6f1e5] font-sans text-neutral-900">
       
-      {/* --- SIDEBAR PANEL (DESKTOP) --- */}
-      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-neutral-200/80 shrink-0 z-30 h-screen sticky top-0 justify-between p-4 shadow-xs">
+      {/* --- FIXED SIDEBAR PANEL (DESKTOP) --- */}
+      <aside className="hidden md:flex w-64 h-screen flex-shrink-0 border-r border-neutral-200/80 bg-white flex-col justify-between p-4 shadow-xs z-30">
         <div className="space-y-6">
           
           {/* Logo brand head */}
@@ -219,7 +206,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {profile?.name?.substring(0, 2).toUpperCase() || "OP"}
             </div>
             <div className="text-left leading-tight min-w-0 flex-1">
-              <span className="text-xs font-semibold text-neutral-900 block truncate">{profile?.name}</span>
+              <span className="text-xs font-semibold text-neutral-900 block truncate">{profile?.name || "Member"}</span>
               <span className="text-[10px] text-neutral-500 font-medium capitalize block">{profile?.role || "Staff"}</span>
             </div>
           </div>
@@ -234,28 +221,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </Button>
         </div>
       </aside>
-
-      {/* --- MOBILE HEADER NAV BAR --- */}
-      <header className="md:hidden flex items-center justify-between bg-white border-b border-neutral-200/80 px-6 py-3.5 z-40 sticky top-0 shadow-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="size-8 rounded-xl bg-[#800080] text-[#ffd700] font-bold flex items-center justify-center border border-[#ffd700]/30 text-xs">
-            SE
-          </div>
-          <div>
-            <h1 className="text-xs font-bold text-neutral-900 uppercase leading-none">
-              Sterling EventOps
-            </h1>
-            <span className="text-[9px] text-neutral-500 font-medium">Asset Control</span>
-          </div>
-        </div>
-
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="text-neutral-600 hover:text-neutral-900 transition-colors p-1"
-        >
-          {mobileMenuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
-        </button>
-      </header>
 
       {/* --- MOBILE DRAWER SLIDER --- */}
       {mobileMenuOpen && (
@@ -337,11 +302,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      {/* --- COCKPIT MAIN WRAPPER COMPONENT --- */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+      {/* --- RIGHT MAIN WRAPPER --- */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         
-        {/* --- GLOBAL TOP NAVBAR HEADER --- */}
-        <header className="sticky top-0 z-20 bg-white border-b border-neutral-200/80 px-8 py-3.5 hidden md:flex items-center justify-between shadow-xs">
+        {/* --- MOBILE HEADER NAV BAR --- */}
+        <header className="md:hidden h-16 bg-white border-b border-neutral-200/80 px-6 flex items-center justify-between flex-shrink-0 z-30 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-xl bg-[#800080] text-[#ffd700] font-bold flex items-center justify-center border border-[#ffd700]/30 text-xs">
+              SE
+            </div>
+            <div>
+              <h1 className="text-xs font-bold text-neutral-900 uppercase leading-none">
+                Sterling EventOps
+              </h1>
+              <span className="text-[9px] text-neutral-500 font-medium">Asset Control</span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="text-neutral-600 hover:text-neutral-900 transition-colors p-1"
+          >
+            {mobileMenuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
+          </button>
+        </header>
+
+        {/* --- DESKTOP STICKY TOP NAVBAR HEADER --- */}
+        <header className="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-sm border-b border-neutral-200/80 px-8 hidden md:flex items-center justify-between flex-shrink-0 shadow-xs">
           <div className="flex items-center gap-3">
             <Building className="size-4 text-neutral-400" />
             <h2 className="text-sm font-bold text-neutral-900 tracking-tight">
@@ -412,7 +399,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* --- EXPIRED SUBSCRIPTION BAR OVERLAY --- */}
         {!isSubscriptionActive && (
-          <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-6 py-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in slide-in-from-top duration-300">
+          <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-6 py-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0 animate-in slide-in-from-top duration-300">
             <div className="flex items-center gap-3">
               <AlertTriangle className="size-4 text-amber-600 shrink-0" />
               <div className="text-xs">
@@ -429,9 +416,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         )}
 
-        {/* --- PAGE MAIN BODY OUTLET COMPONENT --- */}
-        <main className={`flex-1 p-6 md:p-8 relative ${!isSubscriptionActive ? "pointer-events-none opacity-50 select-none cursor-not-allowed" : ""}`}>
-          {children}
+        {/* --- INNER CONTENT AREA --- */}
+        <main className={`flex-1 overflow-y-auto p-8 bg-[#f6f1e5] relative ${!isSubscriptionActive ? "pointer-events-none opacity-50 select-none cursor-not-allowed" : ""}`}>
+          {loading ? (
+            <div className="flex-1 h-full min-h-[50vh] flex flex-col items-center justify-center">
+              <div className="size-10 rounded-full border-3 border-[#800080]/20 border-t-[#800080] animate-spin" />
+              <p className="mt-4 text-xs font-semibold tracking-wide text-neutral-500 font-sans">
+                Loading workspace...
+              </p>
+            </div>
+          ) : (
+            children
+          )}
         </main>
 
       </div>
