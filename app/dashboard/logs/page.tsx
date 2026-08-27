@@ -5,6 +5,7 @@ import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { 
   History, 
   Search, 
@@ -13,10 +14,15 @@ import {
   FileText, 
   Filter, 
   RefreshCw, 
-  Eye, 
   X,
   FileImage,
-  AlertTriangle
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  ShieldCheck,
+  PackageCheck,
+  Undo2,
+  TrendingDown
 } from "lucide-react";
 
 interface MovementLog {
@@ -32,6 +38,8 @@ interface MovementLog {
   eventId?: string;
 }
 
+const ITEMS_PER_PAGE = 10;
+
 export default function AuditLogsPage() {
   const { workspaceId } = useWorkspaceStore();
 
@@ -39,6 +47,7 @@ export default function AuditLogsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Lightbox Modal State
   const [activeZoomUrl, setActiveZoomUrl] = useState<string | null>(null);
@@ -68,170 +77,204 @@ export default function AuditLogsPage() {
     return () => unsubscribe();
   }, [workspaceId]);
 
+  // Reset page when filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, actionFilter]);
+
   // Filter logs based on search and action type
   const filteredLogs = logs.filter((log) => {
+    const queryLower = searchQuery.toLowerCase().trim();
     const matchesSearch = 
-      log.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.itemSku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.actionedByName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (log.note && log.note.toLowerCase().includes(searchQuery.toLowerCase()));
+      !queryLower ||
+      (log.itemName && log.itemName.toLowerCase().includes(queryLower)) ||
+      (log.itemSku && log.itemSku.toLowerCase().includes(queryLower)) ||
+      (log.actionedByName && log.actionedByName.toLowerCase().includes(queryLower)) ||
+      (log.note && log.note.toLowerCase().includes(queryLower));
 
-    const matchesAction = actionFilter === "all" || log.actionType.toUpperCase() === actionFilter.toUpperCase();
+    let matchesAction = true;
+    if (actionFilter === "checkout") {
+      matchesAction = log.actionType.toUpperCase() === "CHECKOUT";
+    } else if (actionFilter === "return") {
+      matchesAction = log.actionType.toUpperCase() === "RETURN";
+    } else if (actionFilter === "damage") {
+      matchesAction = ["DAMAGE", "DAMAGED", "QUARANTINE"].includes(log.actionType.toUpperCase());
+    } else if (actionFilter === "correction") {
+      matchesAction = ["AUDIT_CORRECTION", "CORRECTION"].includes(log.actionType.toUpperCase());
+    }
 
     return matchesSearch && matchesAction;
   });
 
+  // Pagination calculation
+  const totalItems = filteredLogs.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, totalItems);
+  const paginatedLogs = filteredLogs.slice(startIndex, endIndex);
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
+    <div className="space-y-8 font-sans">
       
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800/60 pb-6">
+      {/* --- 1. PAGE HEADER --- */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-neutral-200/80">
         <div>
-          <span className="text-[10px] text-indigo-400 font-mono font-bold uppercase tracking-wider block">
-            Lalterable Ledger
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-[#800080] border border-purple-200 mb-2">
+            CHAIN OF CUSTODY
           </span>
-          <h1 className="text-2xl font-black tracking-tight text-white font-heading mt-1">
-            Immutable Audit Trail Logs
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
+            Audit Trail Logs
           </h1>
-          <p className="text-xs text-zinc-400 mt-1 font-medium leading-relaxed">
-            Legally non-deletable log registers tracing checkouts, returns, equipment damage reports, and corrections.
+          <p className="text-sm text-neutral-500 mt-1 font-normal">
+            Complete timestamped record of asset checkouts, returns, condition reports, and inventory adjustments.
           </p>
         </div>
       </div>
 
-      {/* FILTER BAR */}
-      <div className="bg-zinc-900/40 border border-zinc-850 p-5 rounded-2xl backdrop-blur-md flex flex-col md:flex-row gap-4 justify-between items-center relative overflow-hidden">
-        {/* Glow corner */}
-        <div className="absolute top-[-30px] right-[-30px] w-20 h-20 rounded-full bg-indigo-500/5 blur-xl pointer-events-none" />
-
-        {/* Search */}
+      {/* --- 2. FILTER & SEARCH BAR CONTAINER --- */}
+      <div className="bg-white border border-neutral-200/80 rounded-xl p-4 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
+        {/* Search Input */}
         <div className="relative w-full md:max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
-          <input 
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-neutral-400" />
+          <Input 
             type="text" 
-            placeholder="Search by asset, SKU, operator, or notes..." 
+            placeholder="Search by asset name, SKU, operator email, or notes..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-indigo-500 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white placeholder-zinc-600 outline-none transition-all duration-150"
+            className="bg-neutral-50/60 border-neutral-200 rounded-xl pl-10 pr-4 text-xs h-10 text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-[#800080]"
           />
         </div>
 
-        {/* Action filter */}
-        <div className="flex items-center gap-3.5 w-full md:w-auto shrink-0 justify-end">
-          <span className="text-[10.5px] font-bold text-zinc-400 font-sans flex items-center gap-1.5 shrink-0 select-none">
-            <Filter className="size-3.5 text-zinc-500" /> Filter Logs:
+        {/* Action Type Filter Dropdown */}
+        <div className="flex items-center gap-3 w-full md:w-auto shrink-0 justify-end">
+          <span className="text-xs font-medium text-neutral-600 flex items-center gap-1.5 shrink-0 select-none">
+            <Filter className="size-3.5 text-neutral-400" /> Filter Actions:
           </span>
           
           <select
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
-            className="bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-300 font-semibold outline-none focus:border-indigo-500 transition-colors cursor-pointer min-w-[130px]"
+            aria-label="Filter Actions"
+            className="bg-neutral-50/60 border border-neutral-200 rounded-xl px-3.5 h-10 text-xs text-neutral-800 font-medium outline-none focus:border-[#800080] transition-colors cursor-pointer min-w-[160px]"
           >
             <option value="all">All Actions</option>
-            <option value="checkout">Checkouts</option>
-            <option value="return">Returns</option>
-            <option value="damage">Damages</option>
-            <option value="correction">Corrections</option>
+            <option value="checkout">Checkout (Dispatch)</option>
+            <option value="return">Return (Scan-In)</option>
+            <option value="damage">Maintenance / Damage</option>
+            <option value="correction">Audit Adjustment</option>
           </select>
         </div>
       </div>
 
-      {/* LOGS TABLE LIST */}
-      <div className="bg-zinc-900/20 border border-zinc-850 rounded-2xl overflow-hidden shadow-xl">
-        <div className="overflow-x-auto min-h-[300px]">
+      {/* --- 3. LOGS TABLE CONTAINER --- */}
+      <div className="bg-white border border-neutral-200/80 rounded-xl shadow-xs overflow-hidden">
+        <div className="overflow-x-auto min-h-[320px]">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-2 text-xs text-zinc-500 font-mono">
-              <RefreshCw className="size-6 animate-spin text-indigo-500 mb-1" />
-              <span>Streaming system audit files...</span>
+            <div className="flex flex-col items-center justify-center py-24 gap-3 text-xs text-neutral-500">
+              <RefreshCw className="size-6 animate-spin text-[#800080]" />
+              <span className="font-medium">Streaming system audit records...</span>
             </div>
           ) : filteredLogs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-2 text-xs text-zinc-500 font-medium">
-              <History className="size-8 text-zinc-600 mb-1" />
-              <span>No logs found matching search filters.</span>
+            <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+              <div className="size-12 rounded-full bg-neutral-100 flex items-center justify-center mb-3">
+                <History className="size-6 text-neutral-400" />
+              </div>
+              <h4 className="text-sm font-bold text-neutral-900">No logs found</h4>
+              <p className="text-xs text-neutral-500 mt-1 max-w-md">
+                No audit logs recorded yet. Operations logged via camera scanner or checkout will appear here automatically.
+              </p>
             </div>
           ) : (
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-zinc-850 bg-zinc-900/10 text-zinc-400 font-bold uppercase tracking-wider text-[10px]">
-                  <th className="px-6 py-4">Timestamp</th>
-                  <th className="px-6 py-4">Operator</th>
-                  <th className="px-6 py-4">Asset Detail</th>
-                  <th className="px-6 py-4">Action Type</th>
-                  <th className="px-6 py-4">Quantity</th>
-                  <th className="px-6 py-4">Snapshot / Notes</th>
+                <tr className="border-b border-neutral-200 bg-neutral-50 text-neutral-600 uppercase text-xs font-semibold">
+                  <th className="px-6 py-3.5">Timestamp</th>
+                  <th className="px-6 py-3.5">Operator</th>
+                  <th className="px-6 py-3.5">Asset Detail</th>
+                  <th className="px-6 py-3.5">Action Type</th>
+                  <th className="px-6 py-3.5">Quantity</th>
+                  <th className="px-6 py-3.5">Snapshot / Notes</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-900/40 font-medium">
-                {filteredLogs.map((log) => {
+              <tbody className="divide-y divide-neutral-200/80">
+                {paginatedLogs.map((log) => {
                   const date = new Date(log.createdAt);
                   const formattedTime = isNaN(date.getTime()) 
                     ? "N/A" 
                     : date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+                  const actionUpper = (log.actionType || "").toUpperCase();
+
                   return (
-                    <tr key={log.id} className="hover:bg-zinc-900/20 transition-colors">
+                    <tr key={log.id} className="hover:bg-neutral-50/60 text-neutral-800 text-xs transition-colors">
                       
                       {/* Timestamp */}
-                      <td className="px-6 py-4 text-zinc-400 font-mono text-[10.5px]">
+                      <td className="px-6 py-4 text-neutral-500 font-mono text-xs">
                         <div className="flex items-center gap-1.5">
-                          <Clock className="size-3.5 text-zinc-500 shrink-0" />
+                          <Clock className="size-3.5 text-neutral-400 shrink-0" />
                           <span>{formattedTime}</span>
                         </div>
                       </td>
 
                       {/* Operator Name */}
-                      <td className="px-6 py-4 text-zinc-200">
+                      <td className="px-6 py-4 text-neutral-800 font-medium">
                         <div className="flex items-center gap-1.5">
-                          <User className="size-3.5 text-zinc-500 shrink-0" />
-                          <span>{log.actionedByName}</span>
+                          <User className="size-3.5 text-neutral-400 shrink-0" />
+                          <span>{log.actionedByName || "Staff Operator"}</span>
                         </div>
                       </td>
 
                       {/* Item details */}
-                      <td className="px-6 py-4 space-y-0.5">
-                        <span className="text-zinc-200 font-bold block leading-normal">{log.itemName}</span>
-                        <code className="text-[9.5px] font-mono text-zinc-500 bg-zinc-950 px-1 py-0.5 rounded border border-zinc-900">
+                      <td className="px-6 py-4 space-y-1">
+                        <span className="text-neutral-900 font-semibold block leading-normal">{log.itemName}</span>
+                        <code className="bg-neutral-100 text-neutral-700 border border-neutral-200 font-mono text-xs px-2 py-0.5 rounded-md inline-block">
                           {log.itemSku}
                         </code>
                       </td>
 
                       {/* Action Badge */}
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-[5px] text-[9px] font-black uppercase tracking-wider border ${
-                          log.actionType === "CHECKOUT"
-                            ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"
-                            : log.actionType === "RETURN"
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                            : log.actionType === "DAMAGE"
-                            ? "bg-red-500/10 border-red-500/20 text-red-400 animate-pulse"
-                            : "bg-zinc-500/10 border-zinc-500/20 text-zinc-400"
-                        }`}>
-                          {log.actionType}
-                        </span>
+                        {actionUpper === "CHECKOUT" ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-[#800080] border border-purple-200">
+                            Checkout
+                          </span>
+                        ) : actionUpper === "RETURN" ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Return
+                          </span>
+                        ) : ["DAMAGE", "DAMAGED", "QUARANTINE"].includes(actionUpper) ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                            Damage / Quarantine
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            Audit Adjustment
+                          </span>
+                        )}
                       </td>
 
                       {/* Quantity */}
-                      <td className="px-6 py-4 font-mono text-zinc-200 font-bold">
-                        {log.quantity} units
+                      <td className="px-6 py-4 font-mono text-neutral-900 font-bold">
+                        {log.quantity} {log.quantity === 1 ? "unit" : "units"}
                       </td>
 
                       {/* Notes / Image Proof */}
-                      <td className="px-6 py-4 space-y-1 max-w-[240px]">
+                      <td className="px-6 py-4 space-y-1 max-w-[260px]">
                         {log.note && (
-                          <p className="text-zinc-400 text-xs truncate" title={log.note}>
+                          <p className="text-neutral-600 text-xs truncate" title={log.note}>
                             {log.note}
                           </p>
                         )}
                         {log.snapshotUrl ? (
                           <button
                             onClick={() => setActiveZoomUrl(log.snapshotUrl!)}
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/25 hover:text-white transition-all text-[10px] font-bold font-mono cursor-pointer"
+                            className="text-xs text-[#800080] hover:text-[#660066] font-medium inline-flex items-center gap-1 cursor-pointer bg-transparent border-none p-0"
                           >
-                            <FileImage className="size-3 shrink-0" />
+                            <FileImage className="size-3.5 shrink-0" />
                             <span>View Proof Image</span>
                           </button>
                         ) : (
-                          <span className="text-[10px] text-zinc-600 block">No Image uploaded</span>
+                          <span className="text-[11px] text-neutral-400 block">No photo proof</span>
                         )}
                       </td>
 
@@ -242,42 +285,82 @@ export default function AuditLogsPage() {
             </table>
           )}
         </div>
+
+        {/* --- 4. TABLE PAGINATION FOOTER --- */}
+        {!loading && totalItems > 0 && (
+          <div className="flex items-center justify-between border-t border-neutral-200/80 px-6 py-4 bg-white rounded-b-xl">
+            {/* Left: Counter Text */}
+            <span className="text-xs text-neutral-500 font-medium">
+              Showing {startIndex + 1}–{endIndex} of {totalItems} {totalItems === 1 ? "log" : "logs"}
+            </span>
+
+            {/* Right: Navigation Controls */}
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="border-neutral-200 text-neutral-700 hover:bg-neutral-50 rounded-xl h-8 px-3 text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="size-3.5 mr-1" />
+                Previous
+              </Button>
+
+              <span className="text-xs font-semibold text-neutral-700">
+                Page {currentPage} of {totalPages}
+              </span>
+
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                className="border-neutral-200 text-neutral-700 hover:bg-neutral-50 rounded-xl h-8 px-3 text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next
+                <ChevronRight className="size-3.5 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* --- IN-APP IMAGE LIGHTBOX MODAL --- */}
+      {/* --- 5. IN-APP IMAGE LIGHTBOX MODAL --- */}
       {activeZoomUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-2xl bg-zinc-950/90 transition-all duration-300 animate-in fade-in">
-          <div className="relative max-w-3xl w-full bg-zinc-900 border border-zinc-850 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs bg-black/50 transition-all duration-300 animate-in fade-in">
+          <div className="relative max-w-3xl w-full bg-white border border-neutral-200/80 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
             
             {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-zinc-850 flex items-center justify-between">
-              <span className="text-xs font-black uppercase text-zinc-400 font-mono flex items-center gap-1.5">
-                <FileImage className="size-4 text-indigo-400" />
+            <div className="px-6 py-4 border-b border-neutral-200/80 bg-neutral-50/50 flex items-center justify-between">
+              <span className="text-xs font-bold text-neutral-900 flex items-center gap-1.5">
+                <FileImage className="size-4 text-[#800080]" />
                 Snapshot Verification Proof Image
               </span>
               <button 
                 onClick={() => setActiveZoomUrl(null)}
-                className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                className="text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
               >
                 <X className="size-5" />
               </button>
             </div>
 
             {/* Image display */}
-            <div className="p-6 bg-zinc-950 flex items-center justify-center min-h-[300px] max-h-[60vh] overflow-hidden relative">
+            <div className="p-6 bg-neutral-100 flex items-center justify-center min-h-[300px] max-h-[60vh] overflow-hidden relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img 
                 src={activeZoomUrl} 
-                alt="Movement Snap verification record" 
-                className="max-w-full max-h-full object-contain rounded-lg shadow-xl"
+                alt="Movement snap verification record" 
+                className="max-w-full max-h-full object-contain rounded-lg shadow-sm"
               />
             </div>
 
             {/* Bottom bar */}
-            <div className="p-4 border-t border-zinc-850 bg-zinc-900/60 flex justify-end">
+            <div className="p-4 border-t border-neutral-200/80 bg-neutral-50/50 flex justify-end">
               <Button
                 onClick={() => setActiveZoomUrl(null)}
-                className="bg-zinc-850 text-zinc-300 hover:bg-zinc-800 text-xs font-bold border-none px-5"
+                variant="outline"
+                className="border-neutral-200 text-neutral-700 hover:bg-neutral-100 text-xs font-medium rounded-xl h-9 px-5 cursor-pointer"
               >
                 Close View
               </Button>

@@ -4,16 +4,19 @@ import React, { useEffect } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
-import { useWorkspaceStore, useSubscriptionActive } from "@/store/useWorkspaceStore";
+import {
+  useWorkspaceStore,
+  useSubscriptionActive,
+} from "@/store/useWorkspaceStore";
 import { Button } from "@/components/ui/button";
-import { 
-  Lock, 
-  LogOut, 
-  ShieldAlert, 
-  Sparkles, 
-  AlertTriangle, 
+import {
+  Lock,
+  LogOut,
+  ShieldAlert,
+  Sparkles,
+  AlertTriangle,
   CreditCard,
-  RefreshCw
+  RefreshCw,
 } from "lucide-react";
 
 /**
@@ -24,7 +27,7 @@ import {
  */
 function parseExpiryDate(val: any): Date | null {
   if (!val) return null;
-  
+
   // 1. Check if it's a Firestore Timestamp object (has .toDate or .seconds)
   if (typeof val === "object" && val !== null) {
     if (typeof val.toDate === "function") {
@@ -34,7 +37,7 @@ function parseExpiryDate(val: any): Date | null {
       return new Date(val.seconds * 1000);
     }
   }
-  
+
   // 2. If it is a string or number
   if (typeof val === "string") {
     // If it's a plain "YYYY-MM-DD", append T23:59:59 to make it timezone-agnostic and avoid off-by-one errors
@@ -47,7 +50,7 @@ function parseExpiryDate(val: any): Date | null {
       return d;
     }
   }
-  
+
   return null;
 }
 
@@ -60,16 +63,16 @@ function formatExpiryDate(date: Date | null): string {
 }
 
 export function AuthListener({ children }: { children: React.ReactNode }) {
-  const { 
-    user, 
-    workspaceId, 
-    subscription, 
-    loading, 
-    setAuth, 
-    setLoading, 
+  const {
+    user,
+    workspaceId,
+    subscription,
+    loading,
+    setAuth,
+    setLoading,
     clearAuth,
     simulatedSubscriptionActive,
-    setSimulatedSubscription 
+    setSimulatedSubscription,
   } = useWorkspaceStore();
 
   const isSubscriptionActive = useSubscriptionActive();
@@ -131,58 +134,59 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
 
                     const parsedExpiry = parseExpiryDate(wsSub.validUntil);
                     const formattedExpiry = formatExpiryDate(parsedExpiry);
-                    
-                    // Determine active state: isActive field is true and not expired
-                    const isNowActive = wsSub.isActive === true && (parsedExpiry ? parsedExpiry.getTime() > Date.now() : true);
 
-                    setAuth(
-                      currentUser,
-                      currentWorkspaceId,
-                      {
-                        isActive: isNowActive,
-                        plan: wsSub.plan || "Basic",
-                        validUntil: formattedExpiry
-                      }
-                    );
+                    // Determine active state: isActive field is true and not expired
+                    const isNowActive =
+                      wsSub.isActive === true &&
+                      (parsedExpiry
+                        ? parsedExpiry.getTime() > Date.now()
+                        : true);
+
+                    setAuth(currentUser, currentWorkspaceId, {
+                      isActive: isNowActive,
+                      plan: wsSub.plan || "Basic",
+                      validUntil: formattedExpiry,
+                    });
                   } else {
                     // Workspace doc missing, use user-level subscription or default active trial fallback
                     const userSub = userData.subscription || {};
                     const parsedExpiry = parseExpiryDate(userSub.validUntil);
                     const formattedExpiry = formatExpiryDate(parsedExpiry);
-                    const isNowActive = userSub.isActive === true && (parsedExpiry ? parsedExpiry.getTime() > Date.now() : true);
+                    const isNowActive =
+                      userSub.isActive === true &&
+                      (parsedExpiry
+                        ? parsedExpiry.getTime() > Date.now()
+                        : true);
 
-                    setAuth(
-                      currentUser,
-                      currentWorkspaceId,
-                      {
-                        isActive: isNowActive,
-                        plan: userSub.plan || "Free",
-                        validUntil: formattedExpiry
-                      }
-                    );
+                    setAuth(currentUser, currentWorkspaceId, {
+                      isActive: isNowActive,
+                      plan: userSub.plan || "Free",
+                      validUntil: formattedExpiry,
+                    });
                   }
                 },
                 (err) => {
-                  console.error("Firestore workspace profile subscription error:", err);
+                  console.error(
+                    "Firestore workspace profile subscription error:",
+                    err,
+                  );
                   setLoading(false);
-                }
+                },
               );
             } else {
               // No workspaceId in user profile, set default state
               const userSub = userData.subscription || {};
               const parsedExpiry = parseExpiryDate(userSub.validUntil);
               const formattedExpiry = formatExpiryDate(parsedExpiry);
-              const isNowActive = userSub.isActive === true && (parsedExpiry ? parsedExpiry.getTime() > Date.now() : true);
+              const isNowActive =
+                userSub.isActive === true &&
+                (parsedExpiry ? parsedExpiry.getTime() > Date.now() : true);
 
-              setAuth(
-                currentUser,
-                null,
-                {
-                  isActive: isNowActive,
-                  plan: userSub.plan || "Free",
-                  validUntil: formattedExpiry
-                }
-              );
+              setAuth(currentUser, null, {
+                isActive: isNowActive,
+                plan: userSub.plan || "Free",
+                validUntil: formattedExpiry,
+              });
             }
           } else {
             // Self-healing / Onboarding flow: Auto-create document if missing
@@ -193,16 +197,25 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
               subscription: {
                 isActive: true,
                 plan: "Developer Trial",
-                validUntil: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+                validUntil: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+                  .toISOString()
+                  .split("T")[0],
               },
               createdAt: new Date().toISOString(),
             };
 
             try {
               await setDoc(userDocRef, initialProfile, { merge: true });
-              setAuth(currentUser, defaultWorkspaceId, initialProfile.subscription);
+              setAuth(
+                currentUser,
+                defaultWorkspaceId,
+                initialProfile.subscription,
+              );
             } catch (err) {
-              console.error("Failed to auto-create user profile in Firestore:", err);
+              console.error(
+                "Failed to auto-create user profile in Firestore:",
+                err,
+              );
               setLoading(false);
             }
           }
@@ -210,7 +223,7 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
         (error) => {
           console.error("Firestore user profile subscription error:", error);
           setLoading(false);
-        }
+        },
       );
 
       return () => {
@@ -241,14 +254,10 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
   // If loading, render a beautiful minimal loader
   if (loading) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-zinc-950 text-white z-50">
-        <div className="relative flex items-center justify-center">
-          <div className="w-16 h-16 rounded-full border-t-2 border-b-2 border-indigo-500 animate-spin absolute" />
-          <div className="w-12 h-12 rounded-full border-r-2 border-l-2 border-cyan-400 animate-spin absolute duration-1000" />
-          <Sparkles className="size-6 text-indigo-400 animate-pulse" />
-        </div>
-        <p className="mt-8 text-sm font-semibold tracking-wider text-zinc-400 font-heading uppercase animate-pulse">
-          Synchronizing Workspace Environment...
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#f6f1e5] text-neutral-900 z-50">
+        <div className="size-10 rounded-full border-3 border-[#800080]/20 border-t-[#800080] animate-spin" />
+        <p className="mt-4 text-xs font-semibold tracking-wide text-neutral-600 font-sans">
+          Synchronizing workspace...
         </p>
       </div>
     );
@@ -260,74 +269,86 @@ export function AuthListener({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-screen flex flex-col flex-1">
       {/* RENDER SYSTEM CONTENT */}
-      <div className={isLocked ? "blur-md grayscale opacity-30 pointer-events-none select-none transition-all duration-700 flex-1 flex flex-col" : "flex flex-col flex-1"}>
+      <div
+        className={
+          isLocked
+            ? "blur-sm grayscale opacity-40 pointer-events-none select-none transition-all duration-500 flex-1 flex flex-col"
+            : "flex flex-col flex-1"
+        }
+      >
         {children}
       </div>
 
       {/* DASHBOARD BLOCKING ACCESS BANNER ALERT & LOCK OVERLAY */}
       {isLocked && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex flex-col transition-all duration-500 animate-in fade-in"
           style={{ contentVisibility: "auto" }}
         >
-          {/* 1. CLEAN SHADCN/UI HIGH-CONTRAST BANNER ALERT */}
-          <div className="w-full bg-red-950/90 border-b border-red-500/20 text-red-200 px-6 py-4 shadow-[0_4px_30px_rgba(239,68,68,0.15)] backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in slide-in-from-top duration-500">
+          {/* 1. CLEAN HIGH-CONTRAST BANNER ALERT */}
+          <div className="w-full bg-amber-50 border-b border-amber-200 text-amber-900 px-6 py-4 shadow-sm backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in slide-in-from-top duration-500">
             <div className="flex items-center gap-3.5">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 shrink-0">
-                <AlertTriangle className="size-5 animate-bounce" />
+              <div className="flex items-center justify-center size-10 rounded-xl bg-amber-100 border border-amber-200 text-amber-700 shrink-0">
+                <AlertTriangle className="size-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold tracking-tight text-white font-heading">
+                <h3 className="text-sm font-bold tracking-tight text-neutral-900">
                   Workspace Access Locked — Subscription Suspended
                 </h3>
-                <p className="text-xs text-red-300/80 mt-0.5 max-w-2xl">
-                  Operational features for workspace <code className="px-1 py-0.5 rounded bg-red-950/40 text-red-100 text-xs font-mono">{workspaceId}</code> are restricted because your subscription plan <strong className="text-white font-semibold">"{subscription?.plan}"</strong> expired on {subscription?.validUntil}.
+                <p className="text-xs text-neutral-600 mt-0.5 max-w-2xl">
+                  Operational features for workspace{" "}
+                  <code className="px-1.5 py-0.5 rounded bg-amber-100/70 text-amber-900 text-xs font-mono">
+                    {workspaceId}
+                  </code>{" "}
+                  are restricted because your subscription plan{" "}
+                  <strong className="text-neutral-900 font-semibold">
+                    "{subscription?.plan}"
+                  </strong>{" "}
+                  expired on {subscription?.validUntil}.
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3 self-end md:self-center">
-              <Button 
+              <Button
                 onClick={handleSignOut}
                 variant="outline"
-                className="h-9 border-red-500/20 bg-red-950/20 text-red-200 hover:bg-red-500/10 hover:text-white"
+                className="h-9 border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
               >
                 <LogOut className="size-4 mr-1.5" />
                 Sign Out
               </Button>
-              <Button 
-                className="h-9 bg-red-600 text-white font-semibold hover:bg-red-500 shadow-lg shadow-red-600/15"
-              >
+              <Button className="h-9 bg-[#800080] text-white font-semibold hover:bg-[#660066] shadow-xs">
                 <CreditCard className="size-4 mr-1.5" />
                 Reactivate Plan
               </Button>
             </div>
           </div>
 
-          {/* 2. TRANSPARENT SCREEN LOCKOUT SENSORY INTERACTION BLOCK */}
+          {/* 2. SCREEN LOCKOUT INTERACTION BLOCK */}
           <div className="flex-1 flex items-center justify-center p-4">
-            <div className="relative max-w-sm w-full bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 text-center shadow-xl backdrop-blur-sm animate-in zoom-in-95 duration-300">
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-red-500 to-amber-500" />
-              <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 mx-auto mb-4 animate-pulse">
+            <div className="relative max-w-sm w-full bg-white border border-neutral-200/80 rounded-2xl p-6 text-center shadow-xl animate-in zoom-in-95 duration-300">
+              <div className="relative flex items-center justify-center size-12 rounded-full bg-rose-50 border border-rose-100 text-rose-600 mx-auto mb-4">
                 <Lock className="size-6" />
               </div>
-              <h4 className="text-base font-semibold text-white font-heading">
+              <h4 className="text-base font-bold text-neutral-900">
                 Operational Functions Disabled
               </h4>
-              <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
-                All Firebase queries, mutations, and scan actions are securely locked down for security compliance. To bypass this for development, toggle the mode below.
+              <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">
+                All Firebase queries, mutations, and scan actions are securely
+                locked down for security compliance.
               </p>
 
               {/* Simulation Restore Option */}
               {simulatedSubscriptionActive !== null && (
-                <div className="mt-4 pt-4 border-t border-zinc-800/40 flex items-center justify-between text-xs text-amber-500">
+                <div className="mt-4 pt-4 border-t border-neutral-100 flex items-center justify-between text-xs text-amber-600">
                   <div className="flex items-center gap-1.5">
                     <Sparkles className="size-3.5" />
                     <span>Demo Mode Simulated</span>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setSimulatedSubscription(null)}
-                    className="underline hover:text-amber-400 font-semibold cursor-pointer"
+                    className="underline hover:text-amber-700 font-semibold cursor-pointer"
                   >
                     Restore Original
                   </button>
