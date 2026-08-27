@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useWorkspaceStore, useSubscriptionActive } from "@/store/useWorkspaceStore";
 import { auth, db } from "@/lib/firebase/config";
 import { signOut } from "firebase/auth";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
@@ -18,12 +18,10 @@ import {
   Menu,
   X,
   ChevronDown,
-  User,
-  Shield,
-  Sparkles,
+  Sliders,
   CreditCard,
   AlertTriangle,
-  Sliders
+  Sparkles,
 } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -121,12 +119,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       icon: Boxes
     },
     {
-      name: "Active & Past Events",
+      name: "Events & Allocations",
       href: "/dashboard/events",
       icon: CalendarDays
     },
     {
-      name: "Audit Logs",
+      name: "Audit Trail Logs",
       href: "/dashboard/logs",
       icon: History
     },
@@ -143,13 +141,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Prevent flash content leaks during verification loading state
   if (loading || !user) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-zinc-950 text-white z-50">
-        <div className="relative flex items-center justify-center">
-          <div className="w-16 h-16 rounded-full border-t-2 border-b-2 border-indigo-500 animate-spin absolute" />
-          <div className="w-12 h-12 rounded-full border-r-2 border-l-2 border-cyan-400 animate-spin absolute duration-1000" />
-          <Sparkles className="size-6 text-indigo-400 animate-pulse" />
-        </div>
-        <p className="mt-8 text-sm font-semibold tracking-wider text-zinc-400 font-heading uppercase animate-pulse">
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#f6f1e5] text-neutral-900 z-50">
+        <div className="size-12 rounded-full border-3 border-[#800080]/20 border-t-[#800080] animate-spin" />
+        <p className="mt-6 text-sm font-semibold tracking-wide text-neutral-600 animate-pulse font-sans">
           Securing Workspace Credentials...
         </p>
       </div>
@@ -157,31 +151,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col md:flex-row relative font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-[#faf8f5] text-neutral-900 flex flex-col md:flex-row relative font-sans overflow-x-hidden">
       
-      {/* BACKGROUND GLOWS */}
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] rounded-full bg-cyan-500/5 blur-[120px] pointer-events-none" />
-
       {/* --- SIDEBAR PANEL (DESKTOP) --- */}
-      <aside className="hidden md:flex flex-col w-64 bg-zinc-900/40 border-r border-zinc-800/80 backdrop-blur-xl shrink-0 z-30 h-screen sticky top-0 justify-between p-6">
-        <div className="space-y-8">
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-neutral-200/80 shrink-0 z-30 h-screen sticky top-0 justify-between p-4 shadow-xs">
+        <div className="space-y-6">
           
           {/* Logo brand head */}
-          <div className="flex items-center gap-3">
-            <div className="size-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center text-zinc-950 font-black shadow-lg shadow-indigo-500/15">
-              SF
+          <div className="flex items-center gap-3 px-2 py-1">
+            <div className="size-10 rounded-xl bg-[#800080] text-[#ffd700] font-bold flex items-center justify-center border border-[#ffd700]/30 shadow-xs shrink-0 text-sm">
+              SE
             </div>
-            <div>
-              <h1 className="text-xs font-bold tracking-tight text-white font-heading uppercase leading-none">
-                Sterling Ops
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold tracking-tight text-neutral-900 uppercase leading-none truncate">
+                Sterling EventOps
               </h1>
-              <span className="text-[9px] text-zinc-400 font-mono tracking-wider">On-Field Cockpit</span>
+              <span className="text-[10px] text-neutral-500 font-medium">Asset Control & Logistics</span>
             </div>
           </div>
 
           {/* Navigation link blocks */}
-          <nav className="space-y-1.5">
+          <nav className="space-y-1">
             {navigationItems.map((item) => {
               const isActive = pathname === item.href;
               const Icon = item.icon;
@@ -189,14 +179,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <a
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 group ${
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all duration-150 ${
                     isActive
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
-                      : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+                      ? "bg-[#800080] text-white font-medium shadow-xs"
+                      : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
                   }`}
                 >
-                  <Icon className={`size-4.5 transition-transform group-hover:scale-105 duration-200 ${
-                    isActive ? "text-white" : "text-zinc-500 group-hover:text-indigo-400"
+                  <Icon className={`size-4 transition-transform duration-150 ${
+                    isActive ? "text-white" : "text-neutral-500"
                   }`} />
                   <span>{item.name}</span>
                 </a>
@@ -205,16 +195,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {/* If superadmin, display console */}
             {showSuperadminConsole && (
-              <div className="pt-4 mt-4 border-t border-zinc-800/40">
+              <div className="pt-3 mt-3 border-t border-neutral-200/80">
                 <a
                   href="/superadmin"
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 border ${
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 border ${
                     pathname === "/superadmin"
-                      ? "bg-amber-600 border-amber-500 text-white shadow-md shadow-amber-600/10"
-                      : "text-amber-400 border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 hover:text-amber-300"
+                      ? "bg-purple-50 border-purple-200 text-[#800080] shadow-xs"
+                      : "text-purple-700 border-purple-200/70 bg-purple-50/40 hover:bg-purple-50 hover:text-[#800080]"
                   }`}
                 >
-                  <ShieldAlert className="size-4.5 shrink-0" />
+                  <ShieldAlert className="size-4 shrink-0 text-[#800080]" />
                   <span>Super Admin Console</span>
                 </a>
               </div>
@@ -222,65 +212,75 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </nav>
         </div>
 
-        {/* Footer Logout Option */}
-        <div className="border-t border-zinc-800/40 pt-4">
+        {/* Footer User Info & Logout Option */}
+        <div className="border-t border-neutral-200/80 pt-3 space-y-2">
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200/60">
+            <div className="size-7 rounded-full bg-purple-50 text-[#800080] border border-purple-200 flex items-center justify-center text-xs font-bold uppercase select-none shrink-0">
+              {profile?.name?.substring(0, 2).toUpperCase() || "OP"}
+            </div>
+            <div className="text-left leading-tight min-w-0 flex-1">
+              <span className="text-xs font-semibold text-neutral-900 block truncate">{profile?.name}</span>
+              <span className="text-[10px] text-neutral-500 font-medium capitalize block">{profile?.role || "Staff"}</span>
+            </div>
+          </div>
+
           <Button
             onClick={handleLogout}
             variant="ghost"
-            className="w-full text-zinc-400 hover:text-white hover:bg-zinc-800/50 justify-start h-10 px-3.5 rounded-xl text-xs font-semibold"
+            className="w-full text-neutral-500 hover:text-rose-600 hover:bg-rose-50 justify-start h-9 px-3 rounded-xl text-xs font-semibold cursor-pointer"
           >
-            <LogOut className="size-4.5 mr-3 text-zinc-500" />
-            Sign Out Session
+            <LogOut className="size-4 mr-2.5 text-neutral-400" />
+            Sign Out
           </Button>
         </div>
       </aside>
 
-      {/* --- MOBILE MOBILE HEADER NAV BAR --- */}
-      <header className="md:hidden flex items-center justify-between bg-zinc-900/60 border-b border-zinc-800 px-6 py-4 backdrop-blur-xl z-40 sticky top-0">
+      {/* --- MOBILE HEADER NAV BAR --- */}
+      <header className="md:hidden flex items-center justify-between bg-white border-b border-neutral-200/80 px-6 py-3.5 z-40 sticky top-0 shadow-xs">
         <div className="flex items-center gap-2.5">
-          <div className="size-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center text-zinc-950 font-black">
-            SF
+          <div className="size-8 rounded-xl bg-[#800080] text-[#ffd700] font-bold flex items-center justify-center border border-[#ffd700]/30 text-xs">
+            SE
           </div>
           <div>
-            <h1 className="text-[11px] font-bold text-white font-heading uppercase leading-none">
-              Sterling Ops
+            <h1 className="text-xs font-bold text-neutral-900 uppercase leading-none">
+              Sterling EventOps
             </h1>
-            <span className="text-[8px] text-zinc-400 font-mono tracking-wide">Client Portal</span>
+            <span className="text-[9px] text-neutral-500 font-medium">Asset Control</span>
           </div>
         </div>
 
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="text-zinc-400 hover:text-white transition-colors"
+          className="text-neutral-600 hover:text-neutral-900 transition-colors p-1"
         >
           {mobileMenuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
         </button>
       </header>
 
-      {/* --- MOBILE SIDEDRAWER BAR SLIDER --- */}
+      {/* --- MOBILE DRAWER SLIDER --- */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-30 flex">
+        <div className="md:hidden fixed inset-0 z-50 flex">
           {/* Backdrop lock */}
           <div 
             onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm" 
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs" 
           />
           
-          <aside className="relative flex flex-col w-64 bg-zinc-900 border-r border-zinc-800 p-6 h-full justify-between z-40 animate-in slide-in-from-left duration-250">
-            <div className="space-y-8">
-              <div className="flex items-center justify-between">
+          <aside className="relative flex flex-col w-64 bg-white border-r border-neutral-200 p-4 h-full justify-between z-50 animate-in slide-in-from-left duration-200">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between px-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="size-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center text-zinc-950 font-black">
-                    SF
+                  <div className="size-8 rounded-xl bg-[#800080] text-[#ffd700] font-bold flex items-center justify-center border border-[#ffd700]/30 text-xs">
+                    SE
                   </div>
-                  <span className="text-xs font-bold text-white uppercase font-heading">Navigation Menu</span>
+                  <span className="text-xs font-bold text-neutral-900 uppercase">Sterling EventOps</span>
                 </div>
-                <button onClick={() => setMobileMenuOpen(false)} className="text-zinc-500 hover:text-white">
+                <button onClick={() => setMobileMenuOpen(false)} className="text-neutral-400 hover:text-neutral-700">
                   <X className="size-5" />
                 </button>
               </div>
 
-              <nav className="space-y-1.5">
+              <nav className="space-y-1">
                 {navigationItems.map((item) => {
                   const isActive = pathname === item.href;
                   const Icon = item.icon;
@@ -289,30 +289,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       key={item.href}
                       href={item.href}
                       onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                      className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
                         isActive
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
-                          : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                          ? "bg-[#800080] text-white font-medium shadow-xs"
+                          : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
                       }`}
                     >
-                      <Icon className="size-4.5" />
+                      <Icon className="size-4" />
                       <span>{item.name}</span>
                     </a>
                   );
                 })}
 
                 {showSuperadminConsole && (
-                  <div className="pt-4 mt-4 border-t border-zinc-800/40">
+                  <div className="pt-3 mt-3 border-t border-neutral-200">
                     <a
                       href="/superadmin"
                       onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 border ${
+                      className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all border ${
                         pathname === "/superadmin"
-                          ? "bg-amber-600 border-amber-500 text-white shadow-md shadow-amber-600/10"
-                          : "text-amber-400 border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 hover:text-amber-300"
+                          ? "bg-purple-50 border-purple-200 text-[#800080]"
+                          : "text-purple-700 border-purple-200 bg-purple-50/50 hover:bg-purple-100"
                       }`}
                     >
-                      <ShieldAlert className="size-4.5" />
+                      <ShieldAlert className="size-4 shrink-0 text-[#800080]" />
                       <span>Super Admin Console</span>
                     </a>
                   </div>
@@ -320,17 +320,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </nav>
             </div>
 
-            <div className="border-t border-zinc-800/40 pt-4">
+            <div className="border-t border-neutral-200 pt-3">
               <Button
                 onClick={() => {
                   setMobileMenuOpen(false);
                   handleLogout();
                 }}
                 variant="ghost"
-                className="w-full text-zinc-400 hover:text-white hover:bg-zinc-800/50 justify-start h-10 px-3.5 rounded-xl text-xs font-semibold"
+                className="w-full text-neutral-500 hover:text-rose-600 hover:bg-rose-50 justify-start h-9 px-3 rounded-xl text-xs font-semibold"
               >
-                <LogOut className="size-4.5 mr-3 text-zinc-500" />
-                Sign Out Session
+                <LogOut className="size-4 mr-2 text-neutral-400" />
+                Sign Out
               </Button>
             </div>
           </aside>
@@ -340,21 +340,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* --- COCKPIT MAIN WRAPPER COMPONENT --- */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
         
-        {/* --- GLOBAL TOP NAVBAR COCKPIT HEADER --- */}
-        <header className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/60 px-6 py-4 hidden md:flex items-center justify-between">
+        {/* --- GLOBAL TOP NAVBAR HEADER --- */}
+        <header className="sticky top-0 z-20 bg-white border-b border-neutral-200/80 px-8 py-3.5 hidden md:flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
-            <Building className="size-4 text-zinc-500" />
-            <h2 className="text-sm font-bold text-zinc-200 tracking-tight font-sans">
+            <Building className="size-4 text-neutral-400" />
+            <h2 className="text-sm font-bold text-neutral-900 tracking-tight">
               {workspaceName}
             </h2>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border tracking-wider font-mono ${
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${
               subscription?.plan === "enterprise"
-                ? "bg-purple-500/10 border-purple-500/20 text-purple-400"
+                ? "bg-purple-50 border-purple-200 text-[#800080]"
                 : subscription?.plan === "premium"
-                ? "bg-cyan-500/10 border-cyan-500/20 text-cyan-400"
-                : "bg-zinc-500/10 border-zinc-500/20 text-zinc-400"
+                ? "bg-amber-50 text-amber-800 border-amber-200"
+                : "bg-neutral-100 border-neutral-200 text-neutral-700"
             }`}>
-              {subscription?.plan || "Premium"} Tier
+              {subscription?.plan || "Premium"} Plan
             </span>
           </div>
 
@@ -362,25 +362,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="relative">
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-zinc-900/40 border border-zinc-850 hover:bg-zinc-900/80 hover:border-zinc-800 transition-all cursor-pointer"
+              className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-neutral-50 border border-neutral-200 hover:bg-neutral-100/80 transition-all cursor-pointer"
             >
-              <div className="size-6.5 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-[10.5px] font-black text-indigo-400">
+              <div className="size-7 rounded-full bg-purple-50 text-[#800080] border border-purple-200 flex items-center justify-center text-xs font-bold uppercase select-none">
                 {profile?.name?.substring(0, 2).toUpperCase() || "OP"}
               </div>
               <div className="text-left leading-tight hidden sm:block">
-                <span className="text-[11px] font-bold text-zinc-200 block truncate max-w-[120px]">{profile?.name}</span>
-                <span className="text-[8.5px] text-indigo-400 font-mono font-medium block uppercase tracking-wider">{profile?.role}</span>
+                <span className="text-xs font-bold text-neutral-900 block truncate max-w-[130px]">{profile?.name}</span>
+                <span className="text-[10px] text-neutral-500 font-medium block capitalize">{profile?.role || "Staff"}</span>
               </div>
-              <ChevronDown className="size-3.5 text-zinc-500 shrink-0" />
+              <ChevronDown className="size-3.5 text-neutral-400 shrink-0" />
             </button>
 
             {dropdownOpen && (
               <>
                 <div onClick={() => setDropdownOpen(false)} className="fixed inset-0 z-15" />
-                <div className="absolute right-0 mt-2 w-52 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-2 z-20 animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="px-3.5 py-2.5 border-b border-zinc-800/60 text-[10.5px]">
-                    <span className="text-zinc-500 font-medium block">Logged in as:</span>
-                    <span className="text-zinc-200 font-semibold block truncate mt-0.5">{user?.email}</span>
+                <div className="absolute right-0 mt-2 w-56 bg-white border border-neutral-200/80 rounded-xl shadow-lg p-2 z-20 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-3.5 py-2.5 border-b border-neutral-100 text-xs">
+                    <span className="text-neutral-400 font-medium block">Signed in as</span>
+                    <span className="text-neutral-900 font-semibold block truncate mt-0.5">{user?.email}</span>
+                    <div className="mt-1.5">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border capitalize ${
+                        profile?.role?.toLowerCase() === "admin" || profile?.role?.toLowerCase() === "superadmin"
+                          ? "bg-purple-50 border-purple-200 text-[#800080]"
+                          : "bg-neutral-100 border-neutral-200 text-neutral-700"
+                      }`}>
+                        {profile?.role || "Staff"}
+                      </span>
+                    </div>
                   </div>
                   <div className="p-1">
                     <Button
@@ -389,7 +398,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         handleLogout();
                       }}
                       variant="ghost"
-                      className="w-full text-zinc-400 hover:text-white hover:bg-zinc-800 justify-start h-9 px-2.5 rounded-lg text-xs font-semibold border-none"
+                      className="w-full text-neutral-600 hover:text-rose-600 hover:bg-rose-50 justify-start h-9 px-2.5 rounded-lg text-xs font-medium border-none cursor-pointer"
                     >
                       <LogOut className="size-4 mr-2" />
                       Sign Out
@@ -401,18 +410,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        {/* --- EXPIRED SUBSCRIPTION BAR LOCKOVERLAY --- */}
+        {/* --- EXPIRED SUBSCRIPTION BAR OVERLAY --- */}
         {!isSubscriptionActive && (
-          <div className="bg-red-950/90 border-b border-red-500/20 text-red-200 px-6 py-3.5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in slide-in-from-top duration-300">
+          <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-6 py-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in slide-in-from-top duration-300">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="size-4 text-red-400 animate-bounce shrink-0" />
+              <AlertTriangle className="size-4 text-amber-600 shrink-0" />
               <div className="text-xs">
-                <strong className="text-white font-bold block sm:inline">Subscription Locked: </strong>
-                <span>Workspace operations are currently suspended. Action updates, assets generation, and scans are blocked.</span>
+                <strong className="text-neutral-900 font-bold block sm:inline">Subscription Suspended: </strong>
+                <span className="text-neutral-700">Workspace operations are currently suspended. Action updates, asset creation, and scans are restricted.</span>
               </div>
             </div>
             <Button
-              className="h-8 bg-red-600 text-white font-semibold text-[10.5px] hover:bg-red-500 border-none shrink-0"
+              className="h-8 bg-[#800080] hover:bg-[#660066] text-white font-medium text-xs rounded-lg shadow-xs shrink-0 cursor-pointer"
             >
               <CreditCard className="size-3.5 mr-1.5" />
               Renew Subscription
@@ -421,7 +430,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
 
         {/* --- PAGE MAIN BODY OUTLET COMPONENT --- */}
-        <main className={`flex-1 p-6 relative ${!isSubscriptionActive ? "pointer-events-none opacity-50 select-none cursor-not-allowed" : ""}`}>
+        <main className={`flex-1 p-6 md:p-8 relative ${!isSubscriptionActive ? "pointer-events-none opacity-50 select-none cursor-not-allowed" : ""}`}>
           {children}
         </main>
 
