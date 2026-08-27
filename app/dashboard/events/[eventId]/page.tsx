@@ -6,6 +6,8 @@ import { db } from "@/lib/firebase/config";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import Link from "next/link";
 import { 
   ArrowLeft, 
   QrCode, 
@@ -30,7 +32,11 @@ import {
   X,
   TrendingDown,
   FileSignature,
-  DollarSign
+  DollarSign,
+  MapPin,
+  Calendar,
+  Clock,
+  Camera
 } from "lucide-react";
 
 interface EventItem {
@@ -185,7 +191,6 @@ export default function EventControlPage({ params }: PageProps) {
   useEffect(() => {
     if (!user) return;
     
-    // Auto-grant admin for specific developer test emails or user profiles
     if (user.email === "chukwudubem7@gmail.com") {
       setUserRole("superadmin");
       return;
@@ -258,18 +263,15 @@ export default function EventControlPage({ params }: PageProps) {
   // Secure Context & DOM Mount Checks + Track Cleanups useEffect Hook
   useEffect(() => {
     if (typeof window !== "undefined") {
-      console.log("Is Secure Context:", window.isSecureContext);
       setIsSecureContext(window.isSecureContext);
     }
   }, []);
 
   useEffect(() => {
     if (!isScannerOpen) {
-      // 3. Stream Cleanup Routine on close
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => {
           track.stop();
-          console.log("Explicit Cleanup: Stopped video track:", track.label);
         });
         streamRef.current = null;
       }
@@ -283,11 +285,9 @@ export default function EventControlPage({ params }: PageProps) {
     let activeStream: MediaStream | null = null;
     let intervalId: any = null;
 
-    // 1. DOM Mount Check: Delay starting getUserMedia to guarantee video tag has fully mounted in modal DOM
     const startStream = async () => {
       setCameraErrorMsg("");
       try {
-        // Secure context check
         if (typeof window !== "undefined" && !window.isSecureContext) {
           console.warn("Camera stream initialization blocked: Non-secure Context.");
           return;
@@ -301,18 +301,13 @@ export default function EventControlPage({ params }: PageProps) {
           streamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
-          } else {
-            console.warn("Video ref is currently unassigned in active layout.");
           }
-          // Clear error/loading on success and save stream in state to trigger re-renders
           setCameraErrorMsg("");
           setActiveCameraStream(stream);
 
-          // 3. Verification of Engine Start: Start active frame processing canvas loop 4 times per second (250ms)
-          console.log("Actively passing video track into the decoding engine's frame processing loop...");
           intervalId = setInterval(async () => {
             if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
-            if (videoRef.current.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+            if (videoRef.current.readyState >= 2) {
               try {
                 const canvas = document.createElement("canvas");
                 canvas.width = videoRef.current.videoWidth || 640;
@@ -320,9 +315,7 @@ export default function EventControlPage({ params }: PageProps) {
                 const ctx = canvas.getContext("2d");
                 if (ctx) {
                   ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-                  console.log("Canvas Processing Loop: Draw frame success at 4Hz");
 
-                  // Check if browser native BarcodeDetector is available
                   if (typeof window !== "undefined" && "BarcodeDetector" in window) {
                     // @ts-ignore
                     const detector = new window.BarcodeDetector({
@@ -358,13 +351,9 @@ export default function EventControlPage({ params }: PageProps) {
       clearTimeout(mountTimer);
       if (intervalId) {
         clearInterval(intervalId);
-        console.log("Cleanup unmount: Cleared active frame reader interval loop.");
       }
       if (activeStream) {
-        activeStream.getTracks().forEach((track) => {
-          track.stop();
-          console.log("Cleanup unmount: Stopped track:", track.label);
-        });
+        activeStream.getTracks().forEach((track) => track.stop());
       }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -385,21 +374,14 @@ export default function EventControlPage({ params }: PageProps) {
     setIsScannerOpen(false);
   };
 
-  // Tab-Aware Automatic Hands-Free Scanning Logic
+  // Tab-Aware Automatic Scanning Logic
   const processScanSuccess = async (payload: string) => {
-    // 2. Radical In-App Debugging Console Output
-    console.log("DECODED DATA DETECTED:", payload);
-
-    if (isProcessingScan) {
-      console.log("Scanner locked: Debounce guardrail active.");
-      return;
-    }
+    if (isProcessingScan) return;
 
     try {
       setIsProcessingScan(true);
       setLastScannedRawValue(payload);
 
-      // 1. Bulletproof Hybrid Parsing Logic
       let scannedSku = payload.trim();
       let scannedId = "";
 
@@ -409,19 +391,14 @@ export default function EventControlPage({ params }: PageProps) {
           if (parsed && typeof parsed === "object") {
             if (parsed.sku) scannedSku = String(parsed.sku).trim();
             if (parsed.itemId) scannedId = String(parsed.itemId).trim();
-            console.log("Successfully parsed structured JSON scan payload:", { scannedSku, scannedId });
           }
         }
       } catch (jsonErr) {
-        // Catch gracefully, use raw text fallback as SKU or ID
-        console.log("Payload JSON.parse failed. Gracefully treating as plain SKU or ID text string:", jsonErr);
         scannedSku = payload.trim();
       }
 
-      // Instantly close/pause camera stream modal
       stopCameraStream();
 
-      // Query inventory collection for a matching item
       const match = inventoryList.find(
         (item) => 
           item.sku.toUpperCase() === scannedSku.toUpperCase() || 
@@ -443,7 +420,6 @@ export default function EventControlPage({ params }: PageProps) {
         setCheckoutQty("1");
         setScanSkuInput(match.sku);
       } else {
-        // Return scan safety gate validation checks
         setReturnMismatchedAlert("");
         setReturnSuccess("");
 
@@ -480,7 +456,6 @@ export default function EventControlPage({ params }: PageProps) {
     }
   };
 
-  // Simulating barcode scanner click selection inside Dialog overlay
   const handleSimulateScan = (item: InventoryItem) => {
     processScanSuccess(item.sku);
   };
@@ -524,7 +499,6 @@ export default function EventControlPage({ params }: PageProps) {
     setSubmittingCheckout(true);
 
     try {
-      // Snapshot simulation path
       let snapshotUrl = "";
       if (checkoutSnapshot) {
         snapshotUrl = `https://firebasestorage.googleapis.com/v0/b/stetling-event-ops/o/snapshots%2F${Date.now()}_${checkoutSnapshot.name}?alt=media`;
@@ -800,7 +774,6 @@ export default function EventControlPage({ params }: PageProps) {
 
         const currentWarehouse = itemData.warehouseQty || 0;
         const currentDeployed = itemData.deployedQty || 0;
-        const currentQuarantine = itemData.quarantineQty || 0;
 
         const itemsAllocated = freshEventData.itemsAllocated || {};
         const activeAlloc = itemsAllocated[log.itemId] || { qtyCheckedOut: 0, qtyReturned: 0, qtyDamaged: 0, qtyMissing: 0 };
@@ -820,7 +793,6 @@ export default function EventControlPage({ params }: PageProps) {
           transaction.update(eventRef, { itemsAllocated });
 
         } else if (log.actionType === "RETURN") {
-          // Reversing Return: Move returned count back to deployedQty, decrement warehouse and quarantine
           transaction.update(itemRef, {
             deployedQty: currentDeployed + log.quantity,
             warehouseQty: Math.max(0, currentWarehouse - log.quantity)
@@ -892,7 +864,7 @@ export default function EventControlPage({ params }: PageProps) {
           updatedAt: new Date().toISOString()
         });
 
-        // Write an unalterable closing log
+        // Write closing log
         const logId = `log_${Date.now()}_closeout`;
         const logRef = doc(db, "movement_logs", logId);
         transaction.set(logRef, {
@@ -922,7 +894,7 @@ export default function EventControlPage({ params }: PageProps) {
     }
   };
 
-  // --- MATHEMATICAL COMPILATIONS (LIVE OVERVIEW PANEL) ---
+  // --- MATHEMATICAL COMPILATIONS ---
   let totalAllocatedAssets = 0;
   let totalCurrentlyDeployed = 0;
   let totalDamagedCounts = 0;
@@ -946,7 +918,6 @@ export default function EventControlPage({ params }: PageProps) {
       totalDamagedCounts += qtyDamaged;
       totalMissingCounts += qtyMissing;
 
-      // Risk cost = (damaged + missing) * replacement value
       totalFinancialRisk += (qtyDamaged + qtyMissing) * replacementValue;
     });
   }
@@ -975,7 +946,7 @@ export default function EventControlPage({ params }: PageProps) {
 
   if (authLoading || loading) {
     return (
-      <div className="flex-1 h-full min-h-[50vh] flex flex-col items-center justify-center bg-[#f6f1e5]">
+      <div className="flex-1 h-full min-h-[50vh] flex flex-col items-center justify-center">
         <div className="size-10 rounded-full border-3 border-[#800080]/20 border-t-[#800080] animate-spin" />
         <p className="mt-4 text-xs font-semibold tracking-wide text-neutral-500 font-sans">
           Opening Event Workspace...
@@ -986,15 +957,15 @@ export default function EventControlPage({ params }: PageProps) {
 
   if (!eventData) {
     return (
-      <div className="flex-1 min-h-[50vh] flex flex-col items-center justify-center bg-[#f6f1e5] p-4 text-center">
+      <div className="flex-1 min-h-[50vh] flex flex-col items-center justify-center p-4 text-center">
         <div className="size-12 rounded-full bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center mb-4">
           <AlertCircle className="size-6" />
         </div>
-        <h3 className="text-lg font-bold text-neutral-900">Event Not Found</h3>
+        <h3 className="text-lg font-bold text-neutral-900 font-sans">Event Not Found</h3>
         <p className="text-xs text-neutral-500 mt-1 max-w-sm mb-6">
           This event does not exist or has been archived from your workspace.
         </p>
-        <Button onClick={() => router.push("/dashboard/events")} variant="outline" className="border-neutral-200 text-neutral-700 hover:bg-neutral-50">
+        <Button onClick={() => router.push("/dashboard/events")} variant="outline" className="border-neutral-200 text-neutral-700 hover:bg-neutral-50 rounded-xl">
           <ArrowLeft className="size-4 mr-2" />
           Back to Events
         </Button>
@@ -1003,132 +974,141 @@ export default function EventControlPage({ params }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col font-sans overflow-x-hidden relative">
+    <div className="space-y-8 font-sans">
       
-      {/* Visual ambient background lights */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/5 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-500/5 blur-[120px] pointer-events-none" />
-
-      {/* HEADER BAR SECTION */}
-      <header className="sticky top-0 z-30 border-b border-zinc-850 bg-zinc-950/95 backdrop-blur-md px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button 
-            onClick={() => router.push("/dashboard/events")}
-            variant="ghost"
-            size="sm"
-            className="text-zinc-400 hover:text-white hover:bg-zinc-900 h-9 p-2.5 border-zinc-850"
+      {/* --- TOP HEADER & BACK LINK --- */}
+      <div className="space-y-4">
+        <div>
+          <Link 
+            href="/dashboard/events" 
+            className="inline-flex items-center text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors"
           >
             <ArrowLeft className="size-4 mr-1.5" />
-            Events
-          </Button>
-          <div className="h-6 w-[1px] bg-zinc-800" />
+            Back to Events
+          </Link>
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-neutral-200/80">
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-white font-heading uppercase flex items-center gap-2">
-              {eventData.name}
-              <span className={`text-[10px] border px-2 py-0.5 rounded font-mono font-bold uppercase ${
-                isArchived 
-                  ? "bg-zinc-800 border-zinc-700 text-zinc-400"
-                  : "bg-indigo-500/10 border-indigo-500/20 text-indigo-400 animate-pulse"
-              }`}>
-                {eventData.status}
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
+                {eventData.name}
+              </h1>
+              {isArchived ? (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-neutral-100 text-neutral-600 border border-neutral-200">
+                  Completed
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Live / Upcoming
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-500 mt-1.5">
+              <span className="flex items-center gap-1">
+                <MapPin className="size-3.5 text-neutral-400" />
+                {eventData.location}
               </span>
-            </h1>
-            <span className="text-[10px] text-zinc-500 font-mono tracking-wide">{eventData.location}</span>
+              <span className="text-neutral-300">•</span>
+              <span className="flex items-center gap-1">
+                <Calendar className="size-3.5 text-neutral-400" />
+                {eventData.startDate} — {eventData.endDate}
+              </span>
+            </div>
+          </div>
+
+          {/* Close Out / End Event Button */}
+          <div className="flex items-center gap-3">
+            {!isArchived ? (
+              <Button 
+                onClick={() => {
+                  setCloseoutError("");
+                  setIsCloseoutOpen(true);
+                }}
+                disabled={totalCurrentlyDeployed > 0 || !isAdmin}
+                variant="outline"
+                className={`rounded-xl font-medium border-rose-200 text-rose-700 hover:bg-rose-50 h-10 px-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <FileSignature className="size-4 mr-1.5" />
+                Complete & Close Event
+              </Button>
+            ) : (
+              <span className="text-xs bg-neutral-100 text-neutral-600 px-3 py-1.5 rounded-xl border border-neutral-200 font-medium flex items-center gap-1.5">
+                <Lock className="size-3.5" />
+                Archived & Sealed
+              </span>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* CLOSE OUT / END EVENT CONTROLS */}
-        <div className="flex items-center gap-3">
-          {!isArchived ? (
-            <Button 
-              onClick={() => {
-                setCloseoutError("");
-                setIsCloseoutOpen(true);
-              }}
-              disabled={totalCurrentlyDeployed > 0 || !isAdmin}
-              className={`h-9 font-extrabold uppercase text-[10px] tracking-wider border-none shadow-lg ${
-                totalCurrentlyDeployed > 0 || !isAdmin
-                  ? "bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50"
-                  : "bg-gradient-to-r from-red-600 to-amber-600 hover:opacity-95 text-white shadow-red-600/10"
-              }`}
-            >
-              <FileSignature className="size-3.5 mr-1.5" />
-              Close Out Event
-            </Button>
-          ) : (
-            <span className="text-[10px] bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg border border-zinc-700/60 font-black uppercase flex items-center gap-1.5">
-              <Lock className="size-3.5" />
-              Archived & Sealed
-            </span>
-          )}
-        </div>
-      </header>
-
-      {/* OPERATION METRICS HIGH-LEVEL PANEL */}
-      <section className="max-w-7xl w-full mx-auto px-6 pt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* --- OPERATION METRICS HIGH-LEVEL PANEL --- */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-4`}>
         
-        {/* STAT 1 */}
-        <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-5 backdrop-blur-sm flex items-center justify-between">
+        {/* Metric 1: Total Assigned Assets */}
+        <div className="bg-white border border-neutral-200/80 rounded-xl p-5 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider block">Total Allocated Assets</span>
-            <h3 className="text-2xl font-black font-heading tracking-tight text-white mt-1">
+            <span className="text-xs text-neutral-500 font-medium">Total Assigned Assets</span>
+            <h3 className="text-3xl font-bold text-neutral-900 tracking-tight">
               {totalAllocatedAssets}
             </h3>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+          <div className="size-11 rounded-xl bg-purple-50 border border-purple-100 text-[#800080] flex items-center justify-center shrink-0">
             <Layers className="size-5" />
           </div>
         </div>
 
-        {/* STAT 2 */}
-        <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-5 backdrop-blur-sm flex items-center justify-between">
+        {/* Metric 2: Dispatched On-Site */}
+        <div className="bg-white border border-neutral-200/80 rounded-xl p-5 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider block">Currently Deployed</span>
-            <h3 className="text-2xl font-black font-heading tracking-tight text-cyan-400 mt-1">
+            <span className="text-xs text-neutral-500 font-medium">Dispatched On-Site</span>
+            <h3 className="text-3xl font-bold text-emerald-700 tracking-tight">
               {totalCurrentlyDeployed}
             </h3>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
-            <PackageCheck className="size-5 animate-pulse" />
+          <div className="size-11 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <PackageCheck className="size-5" />
           </div>
         </div>
 
-        {/* STAT 3 */}
-        <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-5 backdrop-blur-sm flex items-center justify-between">
+        {/* Metric 3: Quarantined / Damaged */}
+        <div className="bg-white border border-neutral-200/80 rounded-xl p-5 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider block">Missing / Damaged</span>
-            <h3 className="text-2xl font-black font-heading tracking-tight text-red-400 mt-1">
+            <span className="text-xs text-neutral-500 font-medium">Quarantined / Damaged</span>
+            <h3 className="text-3xl font-bold text-rose-600 tracking-tight">
               {totalMissingCounts + totalDamagedCounts}
             </h3>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center shrink-0">
+          <div className="size-11 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center shrink-0">
             <TrendingDown className="size-5" />
           </div>
         </div>
 
-        {/* STAT 4 */}
-        <div className="bg-zinc-900/40 border border-zinc-850 rounded-xl p-5 backdrop-blur-sm flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider block">Financial Risk Impact</span>
-            <h3 className="text-2xl font-black font-heading tracking-tight text-amber-500 mt-1">
-              ₦{totalFinancialRisk.toLocaleString()}
-            </h3>
+        {/* Metric 4: Financial Risk Worth (Strictly Hidden for Staff Role) */}
+        {isAdmin && (
+          <div className="bg-white border border-neutral-200/80 rounded-xl p-5 shadow-xs flex items-center justify-between">
+            <div className="space-y-1">
+              <span className="text-xs text-neutral-500 font-medium">Financial Risk Worth</span>
+              <h3 className="text-3xl font-bold text-amber-700 tracking-tight">
+                ₦{totalFinancialRisk.toLocaleString()}
+              </h3>
+            </div>
+            <div className="size-11 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <DollarSign className="size-5" />
+            </div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
-            <DollarSign className="size-5" />
-          </div>
-        </div>
+        )}
 
-      </section>
+      </div>
 
-      {/* MAIN MISSION CONTROL AREA */}
-      <main className="max-w-7xl w-full mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8 z-10 relative flex-1">
+      {/* --- MAIN OPERATIONAL AREA --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* LEFT TWO-THIRDS: SCANNERS & FORMS */}
         <div className="lg:col-span-2 space-y-6">
           
           {/* TAB SWITCHERS */}
-          <div className="bg-zinc-900/60 border border-zinc-850 p-1.5 rounded-xl flex">
+          <div className="bg-neutral-100 p-1 rounded-xl flex">
             <button 
               onClick={() => {
                 if (isArchived) return;
@@ -1137,14 +1117,14 @@ export default function EventControlPage({ params }: PageProps) {
                 setScanSkuInput("");
               }}
               disabled={isArchived}
-              className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`flex-1 py-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                 activeTab === "checkout" 
-                  ? "bg-gradient-to-r from-indigo-600 to-cyan-500 text-white shadow-lg shadow-indigo-600/10" 
-                  : "text-zinc-400 hover:text-white hover:bg-zinc-900/40"
+                  ? "bg-[#800080] text-white shadow-xs font-semibold" 
+                  : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/60"
               }`}
             >
               <PackageCheck className="size-4" />
-              Scan-Out (Checkout)
+              Dispatch (Scan-Out)
             </button>
             <button 
               onClick={() => {
@@ -1154,36 +1134,36 @@ export default function EventControlPage({ params }: PageProps) {
                 setScanReturnSkuInput("");
               }}
               disabled={isArchived}
-              className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`flex-1 py-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                 activeTab === "return" 
-                  ? "bg-gradient-to-r from-indigo-600 to-cyan-500 text-white shadow-lg shadow-indigo-600/10" 
-                  : "text-zinc-400 hover:text-white hover:bg-zinc-900/40"
+                  ? "bg-[#800080] text-white shadow-xs font-semibold" 
+                  : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/60"
               }`}
             >
               <Undo2 className="size-4" />
-              Scan-In (Return)
+              Return (Scan-In)
             </button>
           </div>
 
           {/* READ-ONLY STATE BARRIER IF ARCHIVED */}
           {isArchived && (
-            <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-6 text-center shadow-xl space-y-3">
-              <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-450 mx-auto animate-pulse">
+            <div className="bg-white border border-neutral-200/80 rounded-xl p-8 text-center shadow-xs space-y-3">
+              <div className="flex items-center justify-center size-12 rounded-full bg-neutral-100 border border-neutral-200 text-neutral-600 mx-auto">
                 <Lock className="size-6" />
               </div>
-              <h4 className="text-base font-semibold text-zinc-200 font-heading">
-                Operational Dashboard Locked
+              <h4 className="text-base font-bold text-neutral-900">
+                Operational Dashboard Sealed
               </h4>
-              <p className="text-xs text-zinc-500 max-w-md mx-auto leading-relaxed">
-                This deployment folder is fully completed, approved, and archived in historical archives. All checkout and return pipelines are permanently sealed.
+              <p className="text-xs text-neutral-500 max-w-md mx-auto leading-relaxed">
+                This event is completed, approved, and archived. All dispatch and return pipelines are permanently closed.
               </p>
               {eventData.closeoutNotes && (
-                <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 text-left max-w-xl mx-auto space-y-1 mt-4">
-                  <span className="text-[10px] text-zinc-500 uppercase font-black block flex items-center gap-1">
-                    <FileSignature className="size-3.5" />
+                <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 text-left max-w-xl mx-auto space-y-1 mt-4">
+                  <span className="text-[11px] text-neutral-500 font-semibold uppercase block flex items-center gap-1.5">
+                    <FileSignature className="size-3.5 text-[#800080]" />
                     Closeout Note Records
                   </span>
-                  <p className="text-xs text-zinc-400 italic leading-relaxed">
+                  <p className="text-xs text-neutral-700 italic leading-relaxed">
                     "{eventData.closeoutNotes}"
                   </p>
                 </div>
@@ -1193,118 +1173,123 @@ export default function EventControlPage({ params }: PageProps) {
 
           {/* TAB A: SCAN OUT (CHECKOUT) */}
           {!isArchived && activeTab === "checkout" && (
-            <div className="bg-zinc-900/20 border border-zinc-850 rounded-2xl p-6 space-y-6 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 to-indigo-600" />
+            <div className="bg-white border border-neutral-200/80 rounded-xl p-6 space-y-6 shadow-xs">
               
               <div className="space-y-1">
-                <h3 className="text-base font-bold font-heading text-white uppercase flex items-center gap-2">
-                  <PackageCheck className="size-5 text-indigo-400" />
-                  Asset Scan-Out (Checkout)
+                <h3 className="text-base font-bold text-neutral-900 flex items-center gap-2">
+                  <PackageCheck className="size-5 text-[#800080]" />
+                  Dispatch (Scan-Out)
                 </h3>
-                <p className="text-xs text-zinc-400">
-                  Simulate scanning QR Codes or barcode tags to check-out inventory.
+                <p className="text-xs text-neutral-500">
+                  Scan asset QR labels or enter SKUs manually to process gear dispatch and return for this event.
                 </p>
               </div>
 
               {/* DUAL INPUT CONTROLS BAR */}
               <div className="flex flex-col sm:flex-row gap-3">
-                <form onSubmit={handleCheckoutScan} className="flex-1 flex gap-3">
+                <form onSubmit={handleCheckoutScan} className="flex-1 flex gap-2">
                   <div className="relative flex-1">
-                    <QrCode className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
-                    <input 
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-neutral-400" />
+                    <Input 
                       type="text" 
                       placeholder="Enter SKU manually or scan barcode (e.g. SPK-JBL-SRX828)..." 
                       value={scanSkuInput}
                       onChange={(e) => setScanSkuInput(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 pl-10 pr-4 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 font-mono"
+                      className="bg-neutral-50/60 border-neutral-200 rounded-xl pl-10 pr-4 text-xs h-10 font-mono text-neutral-900 focus-visible:ring-[#800080]"
                     />
                   </div>
-                  <Button type="submit" className="bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700 font-bold h-10 px-4">
+                  <Button 
+                    type="submit" 
+                    variant="outline"
+                    className="border-neutral-200 hover:bg-neutral-100 text-neutral-700 rounded-xl h-10 px-4 text-xs font-medium cursor-pointer"
+                  >
                     Lookup
                   </Button>
                 </form>
 
-                {/* Device Camera Scanner Access trigger */}
+                {/* Camera Scanner Access trigger */}
                 <Button 
                   onClick={() => startCameraStream("checkout")}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs uppercase h-10 tracking-wider cursor-pointer"
+                  className="bg-[#800080] hover:bg-[#660066] text-white font-medium rounded-xl h-10 px-5 text-xs shadow-xs cursor-pointer"
                 >
-                  <QrCode className="size-4 mr-2" />
+                  <Camera className="size-4 mr-2" />
                   Scan Live Camera
                 </Button>
               </div>
 
               {/* FEEDBACK FEED */}
               {checkoutError && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in slide-in-from-top-2">
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
                   <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                   <span>{checkoutError}</span>
                 </div>
               )}
 
               {checkoutSuccess && (
-                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in slide-in-from-top-2">
-                  <CheckCircle className="size-4 shrink-0 mt-0.5 animate-pulse" />
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
+                  <CheckCircle className="size-4 shrink-0 mt-0.5" />
                   <span>{checkoutSuccess}</span>
                 </div>
               )}
 
               {/* BATCH QUANTITY CONFIRMATION CARD */}
               {matchedItem && (
-                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 space-y-5 animate-in zoom-in-95 duration-200">
-                  <span className="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded uppercase tracking-wider font-extrabold flex items-center w-fit gap-1 animate-pulse">
-                    <Sparkles className="size-3.5" />
+                <div className="bg-neutral-50/70 border border-neutral-200/80 rounded-xl p-5 space-y-5 animate-in zoom-in-95 duration-200">
+                  <span className="text-[10px] bg-purple-50 text-[#800080] border border-purple-200/80 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold flex items-center w-fit gap-1.5">
+                    <Sparkles className="size-3" />
                     Asset Match Resolved
                   </span>
 
                   {/* Asset Details */}
-                  <div className="grid grid-cols-2 gap-4 border-b border-zinc-850 pb-4">
+                  <div className="grid grid-cols-2 gap-4 border-b border-neutral-200/80 pb-4">
                     <div>
-                      <span className="text-[10px] text-zinc-500 uppercase font-bold block">Asset Name</span>
-                      <strong className="text-white text-sm block mt-0.5">{matchedItem.name}</strong>
+                      <span className="text-[11px] text-neutral-500 font-medium block">Asset Name</span>
+                      <strong className="text-neutral-900 text-sm block mt-0.5 font-bold">{matchedItem.name}</strong>
                     </div>
                     <div>
-                      <span className="text-[10px] text-zinc-500 uppercase font-bold block">SKU Code</span>
-                      <code className="text-xs font-mono font-extrabold text-indigo-300 block mt-0.5">{matchedItem.sku}</code>
+                      <span className="text-[11px] text-neutral-500 font-medium block">SKU Code</span>
+                      <code className="text-xs font-mono font-bold text-[#800080] bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-md inline-block mt-0.5">
+                        {matchedItem.sku}
+                      </code>
                     </div>
                   </div>
 
                   {/* Balance levels */}
                   <div className="grid grid-cols-3 gap-4 text-xs">
-                    <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-850 flex flex-col justify-between">
-                      <span className="text-[10px] text-zinc-500 uppercase font-bold">Warehouse Stock:</span>
-                      <strong className="text-emerald-400 font-black mt-1 text-sm">{matchedItem.warehouseQty}</strong>
+                    <div className="bg-white p-3 rounded-lg border border-neutral-200 flex flex-col justify-between">
+                      <span className="text-[11px] text-neutral-500 font-medium">Warehouse Stock:</span>
+                      <strong className="text-emerald-700 font-bold mt-1 text-sm">{matchedItem.warehouseQty}</strong>
                     </div>
-                    <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-850 flex flex-col justify-between">
-                      <span className="text-[10px] text-zinc-500 uppercase font-bold">UOM:</span>
-                      <span className="text-white uppercase font-black mt-1">{matchedItem.unitOfMeasure}</span>
+                    <div className="bg-white p-3 rounded-lg border border-neutral-200 flex flex-col justify-between">
+                      <span className="text-[11px] text-neutral-500 font-medium">UOM:</span>
+                      <span className="text-neutral-900 uppercase font-bold mt-1">{matchedItem.unitOfMeasure}</span>
                     </div>
-                    <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-850 flex flex-col justify-between">
-                      <span className="text-[10px] text-zinc-500 uppercase font-bold font-mono">Value (₦):</span>
-                      <span className="text-amber-500 font-black mt-1">₦{matchedItem.replacementValue.toLocaleString()}</span>
+                    <div className="bg-white p-3 rounded-lg border border-neutral-200 flex flex-col justify-between">
+                      <span className="text-[11px] text-neutral-500 font-medium">Value (₦):</span>
+                      <span className="text-neutral-900 font-bold mt-1">₦{matchedItem.replacementValue.toLocaleString()}</span>
                     </div>
                   </div>
 
                   {/* Action inputs */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                     {/* Batch Qty input */}
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold text-zinc-300 block">Allocation Batch Quantity</label>
-                      <input 
+                      <label className="text-xs font-semibold text-neutral-700 block">Dispatch Quantity</label>
+                      <Input 
                         ref={checkoutQtyInputRef}
                         type="number" 
                         min="1" 
                         max={matchedItem.warehouseQty}
                         value={checkoutQty}
                         onChange={(e) => setCheckoutQty(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-indigo-500"
+                        className="bg-white border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                       />
                     </div>
 
                     {/* Snapshot file upload */}
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold text-zinc-300 block flex items-center gap-1">
-                        <Upload className="size-3.5 text-zinc-500" />
+                      <label className="text-xs font-semibold text-neutral-700 block flex items-center gap-1">
+                        <Upload className="size-3.5 text-neutral-400" />
                         State Tracking Snapshot
                       </label>
                       <div className="relative">
@@ -1317,23 +1302,23 @@ export default function EventControlPage({ params }: PageProps) {
                         />
                         <label 
                           htmlFor="checkout-file-upload"
-                          className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-750 rounded-lg px-3 py-2 text-xs text-zinc-400 hover:text-white flex items-center justify-between cursor-pointer transition-colors"
+                          className="w-full bg-white border border-neutral-200 hover:bg-neutral-50 rounded-xl px-3 h-10 text-xs text-neutral-500 hover:text-neutral-900 flex items-center justify-between cursor-pointer transition-colors"
                         >
                           <span className="truncate max-w-[80%] font-mono">
                             {checkoutSnapshot ? checkoutSnapshot.name : "Select Snapshot (Optional)..."}
                           </span>
-                          <FileImage className="size-4 text-zinc-500 shrink-0" />
+                          <FileImage className="size-4 text-neutral-400 shrink-0" />
                         </label>
                       </div>
                     </div>
                   </div>
 
-                  {/* SCAN-OUT CONFIRMATION GATE TRIGGER */}
-                  <div className="pt-3 border-t border-zinc-850">
+                  {/* SCAN-OUT CONFIRMATION TRIGGER */}
+                  <div className="pt-2 border-t border-neutral-200/80">
                     <Button 
                       onClick={handleConfirmCheckout}
                       disabled={submittingCheckout}
-                      className="w-full bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-extrabold hover:opacity-95 shadow-lg shadow-indigo-600/10 h-11 border-none cursor-pointer"
+                      className="w-full bg-[#800080] hover:bg-[#660066] text-white font-medium rounded-xl h-10 shadow-xs cursor-pointer"
                     >
                       {submittingCheckout ? (
                         <>
@@ -1342,7 +1327,7 @@ export default function EventControlPage({ params }: PageProps) {
                         </>
                       ) : (
                         <>
-                          Confirm Allocation to {eventData.name}
+                          Confirm Dispatch to {eventData.name}
                           <ArrowRight className="size-4 ml-1.5" />
                         </>
                       )}
@@ -1356,33 +1341,36 @@ export default function EventControlPage({ params }: PageProps) {
 
           {/* TAB B: SCAN IN (RETURN) */}
           {!isArchived && activeTab === "return" && (
-            <div className="bg-zinc-900/20 border border-zinc-850 rounded-2xl p-6 space-y-6 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 to-indigo-600" />
+            <div className="bg-white border border-neutral-200/80 rounded-xl p-6 space-y-6 shadow-xs">
 
               <div className="space-y-1">
-                <h3 className="text-base font-bold font-heading text-white uppercase flex items-center gap-2">
-                  <Undo2 className="size-5 text-indigo-400" />
-                  Asset Scan-In (Return)
+                <h3 className="text-base font-bold text-neutral-900 flex items-center gap-2">
+                  <Undo2 className="size-5 text-[#800080]" />
+                  Return (Scan-In)
                 </h3>
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-neutral-500">
                   Scan returning barcodes or select checked-out gear from the table to log return baselines.
                 </p>
               </div>
 
               {/* DUAL INPUT CONTROLS BAR */}
               <div className="flex flex-col sm:flex-row gap-3">
-                <form onSubmit={handleReturnScanInput} className="flex-1 flex gap-3">
+                <form onSubmit={handleReturnScanInput} className="flex-1 flex gap-2">
                   <div className="relative flex-1">
-                    <QrCode className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
-                    <input 
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-neutral-400" />
+                    <Input 
                       type="text" 
                       placeholder="Scan returning item SKU or ID code..." 
                       value={scanReturnSkuInput}
                       onChange={(e) => setScanReturnSkuInput(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 pl-10 pr-4 text-xs text-white placeholder-zinc-650 outline-none focus:border-indigo-500 font-mono"
+                      className="bg-neutral-50/60 border-neutral-200 rounded-xl pl-10 pr-4 text-xs h-10 font-mono text-neutral-900 focus-visible:ring-[#800080]"
                     />
                   </div>
-                  <Button type="submit" className="bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700 font-bold h-10 px-4">
+                  <Button 
+                    type="submit" 
+                    variant="outline"
+                    className="border-neutral-200 hover:bg-neutral-100 text-neutral-700 rounded-xl h-10 px-4 text-xs font-medium cursor-pointer"
+                  >
                     Lookup
                   </Button>
                 </form>
@@ -1390,36 +1378,36 @@ export default function EventControlPage({ params }: PageProps) {
                 {/* Live camera scan trigger */}
                 <Button 
                   onClick={() => startCameraStream("return")}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs uppercase h-10 tracking-wider cursor-pointer"
+                  className="bg-[#800080] hover:bg-[#660066] text-white font-medium rounded-xl h-10 px-5 text-xs shadow-xs cursor-pointer"
                 >
-                  <QrCode className="size-4 mr-2" />
+                  <Camera className="size-4 mr-2" />
                   Scan Live Camera
                 </Button>
               </div>
 
               {/* SCAN-IN SAFETY GATE MISMATCH FEEDBACK */}
               {returnMismatchedAlert && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-4 text-xs flex items-start gap-3 animate-in slide-in-from-top-2">
-                  <AlertTriangle className="size-5 shrink-0 mt-0.5 animate-bounce text-red-400" />
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-4 text-xs flex items-start gap-3 animate-in slide-in-from-top-2">
+                  <AlertTriangle className="size-5 shrink-0 mt-0.5 text-rose-600" />
                   <div className="space-y-1">
-                    <span className="font-bold block">Asset mismatch: Allocation locked.</span>
-                    <span className="text-red-300/85 block">{returnMismatchedAlert}</span>
+                    <span className="font-bold block">Asset mismatch: Return locked.</span>
+                    <span className="text-rose-600/90 block">{returnMismatchedAlert}</span>
                   </div>
                 </div>
               )}
 
               {returnSuccess && (
-                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in slide-in-from-top-2">
-                  <CheckCircle className="size-4 shrink-0 mt-0.5 animate-pulse" />
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
+                  <CheckCircle className="size-4 shrink-0 mt-0.5" />
                   <span>{returnSuccess}</span>
                 </div>
               )}
 
-              {/* CONFIRMATION RETURN DIALOG OVERLAY CARD */}
+              {/* CONFIRMATION RETURN FORM CARD */}
               {activeReturnItem && (
-                <form onSubmit={handleConfirmReturnSubmit} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 space-y-4 animate-in zoom-in-95 duration-200">
-                  <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
-                    <span className="text-xs font-extrabold text-white uppercase block">
+                <form onSubmit={handleConfirmReturnSubmit} className="bg-neutral-50/70 border border-neutral-200/80 rounded-xl p-5 space-y-4 animate-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between border-b border-neutral-200/80 pb-3">
+                    <span className="text-xs font-bold text-neutral-900 block">
                       Process Return Checklist: {activeReturnItem.sku}
                     </span>
                     <button 
@@ -1428,7 +1416,7 @@ export default function EventControlPage({ params }: PageProps) {
                         setActiveReturnItem(null);
                         setReturnMismatchedAlert("");
                       }}
-                      className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                      className="text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
                     >
                       <X className="size-4" />
                     </button>
@@ -1436,31 +1424,31 @@ export default function EventControlPage({ params }: PageProps) {
 
                   {/* Return item name */}
                   <div className="text-xs">
-                    <span className="text-zinc-500">Asset:</span> <strong className="text-white">{activeReturnItem.name}</strong>
+                    <span className="text-neutral-500">Asset:</span> <strong className="text-neutral-900">{activeReturnItem.name}</strong>
                   </div>
 
                   {/* Inputs */}
                   <div className="grid grid-cols-2 gap-4">
                     {/* Returning Quantity */}
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold text-zinc-300 block">Returning Quantity</label>
-                      <input 
+                      <label className="text-xs font-semibold text-neutral-700 block">Returning Quantity</label>
+                      <Input 
                         ref={returnQtyInputRef}
                         type="number" 
                         min="1" 
                         value={returnQty}
                         onChange={(e) => setReturnQty(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-indigo-500"
+                        className="bg-white border-neutral-200 rounded-xl h-10 text-xs focus-visible:ring-[#800080]"
                       />
                     </div>
 
                     {/* Condition Picker */}
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold text-zinc-300 block">Evaluated Condition</label>
+                      <label className="text-xs font-semibold text-neutral-700 block">Evaluated Condition</label>
                       <select 
                         value={returnCondition}
                         onChange={(e) => setReturnCondition(e.target.value as any)}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-indigo-500 cursor-pointer"
+                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 h-10 text-xs text-neutral-800 outline-none focus:border-[#800080] cursor-pointer"
                       >
                         <option value="Excellent">Excellent</option>
                         <option value="Good">Good</option>
@@ -1485,35 +1473,35 @@ export default function EventControlPage({ params }: PageProps) {
 
                     if (isShort || isDamaged) {
                       return (
-                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 space-y-4 animate-in slide-in-from-top-2">
-                          <div className="flex items-start gap-2.5 text-xs text-amber-400 font-semibold leading-relaxed">
-                            <Lock className="size-4 shrink-0 mt-0.5 animate-pulse" />
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-4 animate-in slide-in-from-top-2">
+                          <div className="flex items-start gap-2.5 text-xs text-amber-900 font-medium leading-relaxed">
+                            <Lock className="size-4 shrink-0 mt-0.5 text-amber-700" />
                             <div className="space-y-1">
-                              <span className="block font-bold">DISCREPANCY DETECTED — SUBMIT LOCKED</span>
-                              <p className="text-amber-300/80 text-[10.5px] font-medium leading-normal">
+                              <span className="block font-bold text-amber-800">DISCREPANCY DETECTED — SUBMIT LOCKED</span>
+                              <p className="text-amber-800/90 text-xs">
                                 {isShort && `Deficit detected: Checking in only ${parsedQty} out of ${currentlyCheckedOut} allocated items. `}
                                 {isDamaged && `Baseline condition is Damaged. `}
-                                You must supply detailed text damage/loss descriptions and attach a damage/loss photograph file to unlock the transactional submit gate.
+                                You must supply detailed text damage/loss descriptions and attach a damage/loss photograph file to unlock submission.
                               </p>
                             </div>
                           </div>
 
-                          <div className="space-y-3 pt-1 border-t border-amber-500/10">
+                          <div className="space-y-3 pt-2 border-t border-amber-200/60">
                             {/* Required discrepancy text notes */}
                             <div className="space-y-1.5">
-                              <label className="text-[10px] font-bold text-amber-400 uppercase">Text Damage/Loss Descriptions *</label>
+                              <label className="text-[11px] font-bold text-amber-900 uppercase">Text Damage / Loss Descriptions *</label>
                               <textarea 
                                 required
                                 value={returnNote}
                                 onChange={(e) => setReturnNote(e.target.value)}
                                 placeholder="State exact locations of damages, missing items reasons, or notes..."
-                                className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500/50 rounded-lg p-2 text-xs text-white placeholder-zinc-700 outline-none min-h-[60px]"
+                                className="w-full bg-white border border-amber-300 focus:border-amber-500 rounded-xl p-2.5 text-xs text-neutral-900 placeholder:text-neutral-400 outline-none min-h-[60px]"
                               />
                             </div>
 
                             {/* Required damage file upload */}
                             <div className="space-y-1.5">
-                              <label className="text-[10px] font-bold text-amber-400 uppercase">Damage / Loss Photo Snapshot *</label>
+                              <label className="text-[11px] font-bold text-amber-900 uppercase">Damage / Loss Photo Snapshot *</label>
                               <div>
                                 <input 
                                   type="file" 
@@ -1525,12 +1513,12 @@ export default function EventControlPage({ params }: PageProps) {
                                 />
                                 <label 
                                   htmlFor="return-file-upload"
-                                  className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-750 rounded-lg p-2.5 text-xs text-zinc-400 hover:text-white flex items-center justify-between cursor-pointer transition-colors"
+                                  className="w-full bg-white border border-amber-300 hover:bg-amber-100/50 rounded-xl p-2.5 text-xs text-neutral-600 hover:text-neutral-900 flex items-center justify-between cursor-pointer transition-colors"
                                 >
                                   <span className="truncate max-w-[80%] font-mono">
                                     {returnPhoto ? returnPhoto.name : "Select photo to upload..."}
                                   </span>
-                                  <FileImage className="size-4 text-zinc-500 shrink-0" />
+                                  <FileImage className="size-4 text-amber-700 shrink-0" />
                                 </label>
                               </div>
                             </div>
@@ -1543,29 +1531,29 @@ export default function EventControlPage({ params }: PageProps) {
 
                   {/* Submit controls */}
                   {returnError && (
-                    <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
+                    <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
                       <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                       <span>{returnError}</span>
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-zinc-850 flex gap-3">
+                  <div className="pt-2 border-t border-neutral-200/80 flex gap-3">
                     <Button 
                       type="button"
                       variant="outline"
                       onClick={() => setActiveReturnItem(null)}
-                      className="flex-1 border-zinc-800 text-zinc-400 h-10"
+                      className="flex-1 border-neutral-200 text-neutral-700 rounded-xl h-10"
                     >
                       Cancel
                     </Button>
                     <Button 
                       type="submit"
                       disabled={submittingReturn || isReturnLocked()}
-                      className="flex-1 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-bold hover:opacity-95 shadow-lg h-10 border-none disabled:opacity-40 disabled:pointer-events-none"
+                      className="flex-1 bg-[#800080] hover:bg-[#660066] text-white font-medium rounded-xl h-10 shadow-xs disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                     >
                       {submittingReturn ? (
                         <>
-                          <RefreshCw className="size-4 mr-2 animate-spin" />
+                          <RefreshCw className="size-4 mr-2 animate-spin text-white" />
                           Processing...
                         </>
                       ) : (
@@ -1582,27 +1570,27 @@ export default function EventControlPage({ params }: PageProps) {
 
               {/* ALLOCATED GEAR TABLES */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
                   Allocated Gear Deployment Checklist
                 </h4>
 
                 {deployedItemsList.length === 0 ? (
-                  <div className="bg-zinc-900/10 border border-zinc-850 rounded-xl py-8 px-4 text-center text-xs text-zinc-500">
+                  <div className="bg-neutral-50 border border-neutral-200/80 rounded-xl py-8 px-4 text-center text-xs text-neutral-500">
                     All checkouts are accounted for. No gear currently deployed.
                   </div>
                 ) : (
-                  <div className="border border-zinc-850 rounded-xl overflow-hidden divide-y divide-zinc-850/40 bg-zinc-900/10 text-xs">
+                  <div className="border border-neutral-200/80 rounded-xl overflow-hidden divide-y divide-neutral-200/80 bg-white text-xs">
                     {deployedItemsList.map((item) => (
-                      <div key={item.id} className="p-4 flex items-center justify-between hover:bg-zinc-900/20 transition-colors">
+                      <div key={item.id} className="p-4 flex items-center justify-between hover:bg-neutral-50/60 transition-colors">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-1.5">
-                            <code className="text-[10px] font-mono font-bold text-indigo-400 bg-indigo-950/20 border border-indigo-900/25 px-1.5 py-0.5 rounded">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-bold text-[#800080] bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded">
                               {item.sku}
-                            </code>
-                            <strong className="text-white font-semibold">{item.name}</strong>
+                            </span>
+                            <strong className="text-neutral-900 font-semibold">{item.name}</strong>
                           </div>
-                          <div className="text-zinc-500 text-[10px]">
-                            Checked-out: <strong className="text-zinc-300">{item.qtyCheckedOut}</strong> | Returned: <strong className="text-emerald-400">{item.qtyReturned}</strong> | Damaged: <strong className="text-red-400">{item.qtyDamaged}</strong> | Missing: <strong className="text-amber-500">{item.qtyMissing}</strong> | Active: <strong className="text-indigo-400">{item.remainingCheckedOut}</strong>
+                          <div className="text-neutral-500 text-[11px]">
+                            Checked-out: <strong className="text-neutral-800">{item.qtyCheckedOut}</strong> | Returned: <strong className="text-emerald-700">{item.qtyReturned}</strong> | Damaged: <strong className="text-rose-600">{item.qtyDamaged}</strong> | Missing: <strong className="text-amber-600">{item.qtyMissing}</strong> | Active: <strong className="text-[#800080]">{item.remainingCheckedOut}</strong>
                           </div>
                         </div>
                         <Button 
@@ -1612,8 +1600,8 @@ export default function EventControlPage({ params }: PageProps) {
                             setReturnMismatchedAlert("");
                           }}
                           size="xs"
-                          variant="ghost"
-                          className="text-indigo-400 hover:text-white hover:bg-zinc-900 border-zinc-800 shrink-0 font-bold uppercase text-[9px] tracking-wider"
+                          variant="outline"
+                          className="border-neutral-200 text-neutral-700 hover:text-[#800080] hover:bg-neutral-50 shrink-0 font-semibold text-xs rounded-lg cursor-pointer"
                         >
                           Return Gear
                         </Button>
@@ -1628,77 +1616,77 @@ export default function EventControlPage({ params }: PageProps) {
 
         </div>
 
-        {/* RIGHT COLUMN: REAL-TIME MOVEMENT LOGS WITH REVERSALS */}
+        {/* RIGHT COLUMN: EVENT ACTIVITY STREAM */}
         <div className="space-y-6">
           
-          <div className="bg-zinc-900/20 border border-zinc-850 rounded-2xl p-5 shadow-xl relative overflow-hidden flex flex-col justify-between">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 to-indigo-600" />
-
-            <div className="space-y-1.5 pb-4 border-b border-zinc-850">
-              <h3 className="text-xs font-black tracking-wider text-white uppercase flex items-center gap-2">
-                <FileText className="size-4.5 text-indigo-400" />
-                Immutable Audit Trails
+          <div className="bg-white border border-neutral-200/80 rounded-xl p-6 shadow-xs flex flex-col justify-between">
+            
+            <div className="space-y-1 pb-4 border-b border-neutral-200/80">
+              <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
+                <FileText className="size-4 text-[#800080]" />
+                Event Activity Stream
               </h3>
-              <p className="text-[10px] text-zinc-500 leading-relaxed">
-                Legally unalterable movements log recorded in the `movement_logs` collection.
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                Real-time log of equipment check-outs, returns, and condition notes for this production.
               </p>
             </div>
 
             {/* Logs activity lists */}
-            <div className="mt-4 space-y-4 max-h-[550px] overflow-y-auto pr-1">
+            <div className="mt-4 space-y-3 max-h-[600px] overflow-y-auto pr-1">
               {activityLogs.length === 0 ? (
-                <div className="py-20 text-center text-xs text-zinc-650">
-                  No activity movement records logged for this deployment.
+                <div className="py-16 text-center text-xs text-neutral-400 flex flex-col items-center gap-2">
+                  <Activity className="size-8 text-neutral-300" />
+                  <span>No activity logged for this event yet. Use the scan inputs on the left to check out equipment.</span>
                 </div>
               ) : (
                 activityLogs.map((log) => (
                   <div 
                     key={log.id} 
-                    className="p-3 bg-zinc-950 rounded-xl border border-zinc-900 hover:border-zinc-850 flex flex-col justify-between gap-3 text-[11px] animate-in slide-in-from-right-3 transition-colors"
+                    className="p-3.5 bg-neutral-50/70 rounded-xl border border-neutral-200/80 hover:bg-neutral-50 flex flex-col justify-between gap-2.5 text-xs transition-colors"
                   >
                     {/* Log header */}
-                    <div className="flex justify-between items-start gap-1">
-                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider border ${
+                    <div className="flex justify-between items-center gap-2">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                         log.actionType === "CHECKOUT"
-                          ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"
+                          ? "bg-purple-50 text-[#800080] border-purple-200/80"
                           : log.actionType === "RETURN"
-                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                          : "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200"
                       }`}>
-                        {log.actionType}
+                        {log.actionType === "CHECKOUT" ? "Dispatch" : log.actionType === "RETURN" ? "Return" : "Audit Correction"}
                       </span>
-                      <span className="text-[9.5px] text-zinc-550 font-mono">
+                      <span className="text-[11px] text-neutral-500 font-mono bg-white px-2 py-0.5 rounded border border-neutral-200/60">
                         {new Date(log.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </span>
                     </div>
 
                     {/* Operator Tracing output */}
-                    <div className="space-y-1 text-zinc-350">
+                    <div className="space-y-1 text-neutral-700">
                       <div>
-                        Asset SKU: <strong className="text-white font-bold font-mono">{log.itemSku}</strong>
+                        Asset SKU: <strong className="text-neutral-900 font-bold font-mono text-[#800080]">{log.itemSku}</strong>
                       </div>
-                      <div className="line-clamp-1 font-medium">{log.itemName}</div>
+                      <div className="font-semibold text-neutral-900 text-xs">{log.itemName}</div>
                       
                       {/* Operator signature */}
-                      <div className="text-[10.5px] text-zinc-400 flex items-center gap-1">
-                        <UserCheck className="size-3.5 text-zinc-500 shrink-0" />
+                      <div className="text-[11px] text-neutral-500 flex items-center gap-1">
+                        <UserCheck className="size-3.5 text-neutral-400 shrink-0" />
                         <span>
-                          {log.quantity} units {log.actionType.toLowerCase() === "checkout" ? "checked out" : log.actionType.toLowerCase() === "return" ? "returned" : "reversed"} by{" "}
-                          <strong className="text-indigo-300 font-semibold">{log.actionedByName || "Operator"}</strong>
+                          {log.quantity} {log.quantity === 1 ? "unit" : "units"} {log.actionType.toLowerCase() === "checkout" ? "checked out" : log.actionType.toLowerCase() === "return" ? "returned" : "reversed"} by{" "}
+                          <strong className="text-neutral-800 font-medium">{log.actionedByName || "Operator"}</strong>
                         </span>
                       </div>
                       
                       {log.note && (
-                        <p className="text-[10px] italic text-zinc-500 bg-zinc-900/30 p-1.5 rounded border border-zinc-900/60 mt-1 leading-relaxed">
+                        <p className="text-[11px] italic text-neutral-600 bg-white p-2 rounded-lg border border-neutral-200/80 mt-1 leading-relaxed">
                           Note: {log.note}
                         </p>
                       )}
 
-                      {/* IN-APP IMAGE DIALOG MODAL VIEW TRIGGER (Eliminating <a> tab redirects) */}
+                      {/* IN-APP IMAGE DIALOG MODAL VIEW TRIGGER */}
                       {log.snapshotUrl && (
                         <button 
                           onClick={() => setActiveZoomUrl(log.snapshotUrl || null)}
-                          className="text-[9.5px] text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1 mt-1 font-bold bg-transparent border-none cursor-pointer"
+                          className="text-[11px] text-[#800080] hover:text-[#660066] font-medium transition-colors flex items-center gap-1 mt-1 bg-transparent border-none cursor-pointer"
                         >
                           <FileImage className="size-3.5" />
                           View Snapshot Proof
@@ -1708,8 +1696,8 @@ export default function EventControlPage({ params }: PageProps) {
 
                     {/* Admin Undo Button (reversal pipeline) */}
                     {log.actionType !== "AUDIT_CORRECTION" && !isArchived && (
-                      <div className="pt-2 border-t border-zinc-900/80 flex items-center justify-between">
-                        <span className="text-[9px] text-zinc-500 font-mono">
+                      <div className="pt-2 border-t border-neutral-200/80 flex items-center justify-between">
+                        <span className="text-[10px] text-neutral-400 font-mono">
                           ID: #{log.id.slice(-5)}
                         </span>
                         
@@ -1718,10 +1706,10 @@ export default function EventControlPage({ params }: PageProps) {
                           disabled={reversingId !== null || !isAdmin}
                           size="xs"
                           variant="ghost"
-                          className="h-6 text-zinc-500 hover:text-amber-400 hover:bg-amber-500/5 font-extrabold text-[9px] uppercase tracking-wider shrink-0"
+                          className="h-7 text-neutral-600 hover:text-amber-700 hover:bg-amber-50 text-[11px] font-medium shrink-0 cursor-pointer"
                         >
                           {reversingId === log.id ? (
-                            <RefreshCw className="size-3.5 animate-spin mr-1 text-amber-500" />
+                            <RefreshCw className="size-3 animate-spin mr-1 text-amber-600" />
                           ) : (
                             <Undo2 className="size-3 mr-1" />
                           )}
@@ -1738,26 +1726,24 @@ export default function EventControlPage({ params }: PageProps) {
 
         </div>
 
-      </main>
+      </div>
 
       {/* --- 1. DEVICE CAMERA SCANNER DIALOG MODAL --- */}
       {isScannerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-zinc-950/80 transition-all duration-300 animate-in fade-in">
-          <div className="relative max-w-xl w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            {/* Ambient indicator */}
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 to-cyan-400" />
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs bg-black/40 transition-all duration-300 animate-in fade-in">
+          <div className="relative max-w-xl w-full bg-white border border-neutral-200/80 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+            
             {/* Header */}
-            <div className="px-6 py-5 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-neutral-200/80 bg-neutral-50/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <QrCode className="size-5 text-indigo-400" />
-                <h3 className="text-sm font-bold text-white font-heading uppercase">
-                  Scanner Live Device Camera
+                <QrCode className="size-5 text-[#800080]" />
+                <h3 className="text-sm font-bold text-neutral-900">
+                  Live Barcode & QR Scanner
                 </h3>
               </div>
               <button 
                 onClick={stopCameraStream}
-                className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                className="text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
               >
                 <X className="size-5" />
               </button>
@@ -1765,11 +1751,11 @@ export default function EventControlPage({ params }: PageProps) {
 
             {/* Secure context warning banner */}
             {!isSecureContext && (
-              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 text-xs flex items-start gap-2.5 mx-6 mt-4 rounded-xl animate-in slide-in-from-top-2">
-                <AlertTriangle className="size-4 shrink-0 mt-0.5 animate-pulse" />
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 text-xs flex items-start gap-2.5 mx-6 mt-4 rounded-xl animate-in slide-in-from-top-2">
+                <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-700" />
                 <div className="space-y-0.5">
                   <span className="font-bold block">Insecure Connection Warning</span>
-                  <p className="text-[10px] text-amber-300/80 leading-normal font-medium">
+                  <p className="text-xs text-amber-800/80">
                     Webcam scanning requires an HTTPS connection or localhost to operate securely.
                   </p>
                 </div>
@@ -1777,12 +1763,12 @@ export default function EventControlPage({ params }: PageProps) {
             )}
 
             {/* Video Viewport & Scanning Overlay */}
-            <div className="p-6 space-y-6">
-              <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800 shadow-inner flex items-center justify-center">
+            <div className="p-6 space-y-5">
+              <div className="relative w-full aspect-video bg-neutral-900 rounded-xl overflow-hidden border border-neutral-200 shadow-inner flex items-center justify-center">
                 
                 {/* Sweep laser line animation */}
-                <div className="absolute inset-0 border-[2px] border-indigo-500/20 m-6 rounded-lg pointer-events-none flex items-center justify-center">
-                  <div className="w-[80%] h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_10px_#22d3ee] animate-pulse" />
+                <div className="absolute inset-0 border-2 border-purple-400/30 m-6 rounded-lg pointer-events-none flex items-center justify-center">
+                  <div className="w-[80%] h-[2px] bg-gradient-to-r from-transparent via-[#ffd700] to-transparent shadow-[0_0_10px_#ffd700] animate-pulse" />
                 </div>
 
                 <video 
@@ -1794,31 +1780,31 @@ export default function EventControlPage({ params }: PageProps) {
 
                 {/* If stream failed */}
                 {(!activeCameraStream || cameraErrorMsg) && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 space-y-2 bg-zinc-950/90 z-20">
-                    <AlertTriangle className="size-8 text-amber-500 animate-bounce" />
-                    <span className="text-xs text-zinc-300 font-bold">Live Camera Feed Unavailable</span>
-                    <p className="text-[10.5px] text-zinc-400 max-w-xs leading-normal font-medium">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 space-y-2 bg-neutral-900/90 z-20">
+                    <AlertTriangle className="size-8 text-amber-400 animate-bounce" />
+                    <span className="text-xs text-white font-bold">Live Camera Feed Unavailable</span>
+                    <p className="text-xs text-neutral-300 max-w-xs">
                       {cameraErrorMsg || "Webcam scanning requires an HTTPS connection or localhost to operate securely."}
                     </p>
-                    <p className="text-[10px] text-indigo-400 font-bold max-w-xs leading-normal pt-1.5 animate-pulse">
-                      You can click any of the inventory targets below to immediately simulate barcode/QR scans!
+                    <p className="text-xs text-[#ffd700] font-semibold max-w-xs pt-1.5">
+                      You can click any of the simulation targets below to test barcode/QR scans.
                     </p>
                   </div>
                 )}
               </div>
 
               {/* SIMULATOR CLICK OPTIONS */}
-              <div className="space-y-2.5">
-                <span className="text-[10px] font-black uppercase text-zinc-500 tracking-wider block">
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold uppercase text-neutral-500 tracking-wider block">
                   Scan Simulation Targets (Click to Scan):
                 </span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[140px] overflow-y-auto pr-1">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[140px] overflow-y-auto pr-1">
                   {inventoryList.map((item) => (
                     <button 
                       key={item.id}
                       type="button"
                       onClick={() => handleSimulateScan(item)}
-                      className="p-2 bg-zinc-950 hover:bg-indigo-950/20 border border-zinc-850 hover:border-indigo-900/30 rounded-lg text-[10.5px] text-zinc-400 hover:text-indigo-300 font-mono text-left font-bold transition-all truncate"
+                      className="p-2 bg-neutral-50 hover:bg-purple-50 border border-neutral-200 hover:border-purple-200 rounded-lg text-xs text-neutral-700 hover:text-[#800080] font-mono text-left font-medium transition-all truncate cursor-pointer"
                     >
                       [{item.sku}] {item.name}
                     </button>
@@ -1826,22 +1812,12 @@ export default function EventControlPage({ params }: PageProps) {
                 </div>
               </div>
 
-              {/* RADICAL IN-APP DEBUGGING DIAGNOSTICS */}
-              <div className="bg-black border border-zinc-800 rounded-lg p-2.5 text-xs font-mono text-green-400 space-y-1.5">
-                <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-                  <span className="size-1.5 rounded-full bg-green-500 animate-ping shrink-0" />
-                  Scanner Frame-Reader Loop Active (4Hz)
-                </div>
-                <div className="truncate">
-                  Last Scanned Raw Data: <span className="text-white font-extrabold">{lastScannedRawValue || "N/A (Ready for code detection...)"}</span>
-                </div>
-              </div>
-
               {/* Close */}
-              <div className="border-t border-zinc-800 pt-4">
+              <div className="border-t border-neutral-200/80 pt-4">
                 <Button 
                   onClick={stopCameraStream}
-                  className="w-full bg-zinc-800 text-zinc-300 hover:bg-zinc-700 font-bold h-10 border-none"
+                  variant="outline"
+                  className="w-full border-neutral-200 text-neutral-700 hover:bg-neutral-50 rounded-xl font-medium h-10"
                 >
                   Close Scanner
                 </Button>
@@ -1854,37 +1830,38 @@ export default function EventControlPage({ params }: PageProps) {
 
       {/* --- 2. IN-APP IMAGE LIGHTBOX MODAL --- */}
       {activeZoomUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-2xl bg-zinc-950/90 transition-all duration-300 animate-in fade-in">
-          <div className="relative max-w-3xl w-full bg-zinc-900 border border-zinc-850 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs bg-black/50 transition-all duration-300 animate-in fade-in">
+          <div className="relative max-w-3xl w-full bg-white border border-neutral-200/80 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
             
             {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-zinc-850 flex items-center justify-between">
-              <span className="text-xs font-black uppercase text-zinc-400 font-mono flex items-center gap-1.5">
-                <FileImage className="size-4 text-indigo-400" />
+            <div className="px-6 py-4 border-b border-neutral-200/80 bg-neutral-50/50 flex items-center justify-between">
+              <span className="text-xs font-bold text-neutral-900 flex items-center gap-1.5">
+                <FileImage className="size-4 text-[#800080]" />
                 Snapshot Verification Proof Image
               </span>
               <button 
                 onClick={() => setActiveZoomUrl(null)}
-                className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                className="text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
               >
                 <X className="size-5" />
               </button>
             </div>
 
             {/* Image viewport */}
-            <div className="p-4 bg-zinc-950 flex items-center justify-center aspect-video relative">
+            <div className="p-4 bg-neutral-100 flex items-center justify-center aspect-video relative">
               <img 
                 src={activeZoomUrl} 
                 alt="Verification Proof" 
-                className="max-h-[500px] object-contain rounded-lg shadow-2xl"
+                className="max-h-[500px] object-contain rounded-lg shadow-sm"
               />
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-zinc-850 bg-zinc-900/50 flex justify-end">
+            <div className="px-6 py-4 border-t border-neutral-200/80 bg-neutral-50/50 flex justify-end">
               <Button 
                 onClick={() => setActiveZoomUrl(null)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold h-9 text-xs"
+                variant="outline"
+                className="border-neutral-200 text-neutral-700 hover:bg-neutral-100 font-medium h-9 text-xs rounded-xl"
               >
                 Close View
               </Button>
@@ -1893,91 +1870,89 @@ export default function EventControlPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* --- 3. CLOSE OUT EVENT (END EVENT) LIFECYCLE MODAL --- */}
+      {/* --- 3. CLOSE OUT EVENT LIFECYCLE MODAL --- */}
       {isCloseoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-zinc-950/80 transition-all duration-300 animate-in fade-in">
-          <div className="relative max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            {/* Top red alert bar */}
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-red-500 to-amber-500" />
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs bg-black/40 transition-all duration-300 animate-in fade-in">
+          <div className="relative max-w-md w-full bg-white border border-neutral-200/80 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+            
             {/* Header */}
-            <div className="px-6 py-5 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-neutral-200/80 bg-neutral-50/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <FileSignature className="size-5 text-red-400" />
-                <h3 className="text-sm font-bold text-white font-heading uppercase">
-                  Close Out & Seal Event Folder
+                <FileSignature className="size-5 text-rose-600" />
+                <h3 className="text-sm font-bold text-neutral-900">
+                  Complete & Close Event
                 </h3>
               </div>
               <button 
                 onClick={() => setIsCloseoutOpen(false)}
-                className="text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                className="text-neutral-400 hover:text-neutral-700 transition-colors cursor-pointer"
               >
-                <X className="size-5" />
+                <X className="size-4" />
               </button>
             </div>
 
             {/* Form */}
             <form onSubmit={handleCloseoutSubmit} className="p-6 space-y-4">
               
-              <div className="text-xs text-zinc-400 leading-relaxed">
-                You are about to close out, archive, and permanently lock deployment folder <strong className="text-white">"{eventData.name}"</strong>. This will freeze all allocations and operations.
+              <div className="text-xs text-neutral-600 leading-relaxed">
+                You are about to close out, archive, and seal the event <strong className="text-neutral-900">"{eventData.name}"</strong>. This will freeze all allocations and active operations.
               </div>
 
               {/* Warnings details if discrepancy exists */}
               {totalMissingCounts + totalDamagedCounts > 0 ? (
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 space-y-3">
-                  <div className="flex items-start gap-2.5 text-xs text-amber-400 font-bold">
-                    <AlertTriangle className="size-4 shrink-0 mt-0.5 animate-pulse" />
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-start gap-2.5 text-xs text-amber-900 font-bold">
+                    <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-700" />
                     <span>OUTSTANDING DISCREPANCIES RECORDED</span>
                   </div>
-                  <p className="text-[10.5px] text-amber-300/80 leading-normal font-medium">
-                    This event is wrapping up with <strong className="text-white">{totalMissingCounts} lost</strong> and <strong className="text-white">{totalDamagedCounts} damaged</strong> items, causing an estimated financial risk impact of <strong className="text-white">₦{totalFinancialRisk.toLocaleString()}</strong>.
+                  <p className="text-xs text-amber-800 leading-normal">
+                    This event has <strong className="text-neutral-900">{totalMissingCounts} lost</strong> and <strong className="text-neutral-900">{totalDamagedCounts} damaged</strong> items, causing an estimated financial risk impact of <strong className="text-neutral-900">₦{totalFinancialRisk.toLocaleString()}</strong>.
                   </p>
                   
                   {/* Notes input */}
-                  <div className="space-y-1.5 pt-2 border-t border-amber-500/15">
-                    <label className="text-[10px] font-bold text-amber-400 uppercase">Discrepancy Resolution Closeout Note *</label>
+                  <div className="space-y-1.5 pt-2 border-t border-amber-200">
+                    <label className="text-[11px] font-bold text-amber-900 uppercase">Discrepancy Resolution Note *</label>
                     <textarea 
                       required
                       value={closeoutNotesInput}
                       onChange={(e) => setCloseoutNotesInput(e.target.value)}
                       placeholder="Detail insurance reports, claims actions, client billing terms, or loss approvals..."
-                      className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500/50 rounded-lg p-2.5 text-xs text-white placeholder-zinc-700 outline-none min-h-[80px]"
+                      className="w-full bg-white border border-amber-300 focus:border-amber-500 rounded-xl p-2.5 text-xs text-neutral-900 placeholder:text-neutral-400 outline-none min-h-[80px]"
                     />
                   </div>
                 </div>
               ) : (
-                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl p-4 text-xs flex items-center gap-2.5 font-bold">
-                  <ShieldCheck className="size-4 text-emerald-400" />
-                  <span>CLEAN CLOSE OUT: 100% of gear successfully returned intact!</span>
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-4 text-xs flex items-center gap-2.5 font-semibold">
+                  <ShieldCheck className="size-5 text-emerald-600 shrink-0" />
+                  <span>Clean closeout: 100% of equipment successfully returned intact.</span>
                 </div>
               )}
 
               {closeoutError && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-xs flex items-start gap-2 animate-in slide-in-from-top-2">
                   <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                   <span>{closeoutError}</span>
                 </div>
               )}
 
               {/* Actions */}
-              <div className="pt-4 flex gap-3 border-t border-zinc-800">
+              <div className="pt-2 flex gap-3 border-t border-neutral-200/80">
                 <Button 
                   type="button"
                   variant="outline"
                   onClick={() => setIsCloseoutOpen(false)}
                   disabled={submittingCloseout}
-                  className="flex-1 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-white h-11"
+                  className="flex-1 border-neutral-200 text-neutral-700 hover:bg-neutral-100 h-10 rounded-xl font-medium"
                 >
                   Cancel
                 </Button>
                 <Button 
                   type="submit"
                   disabled={submittingCloseout}
-                  className="flex-1 bg-gradient-to-r from-red-600 to-amber-600 text-white font-bold hover:opacity-95 shadow-lg h-11 border-none cursor-pointer"
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-xl h-10 shadow-xs cursor-pointer"
                 >
                   {submittingCloseout ? (
-                    <RefreshCw className="size-4 animate-spin" />
+                    <RefreshCw className="size-4 animate-spin text-white" />
                   ) : (
                     "Confirm Archive"
                   )}
