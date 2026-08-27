@@ -1,27 +1,27 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { getDoc, doc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { 
-  Building, 
-  Mail, 
-  Lock, 
-  Sparkles, 
-  ShieldAlert, 
-  CheckCircle, 
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Mail,
+  Lock,
+  Sparkles,
+  CheckCircle2,
   AlertTriangle,
   QrCode,
-  Layers,
-  Database,
-  History,
+  ShieldCheck,
+  PackageCheck,
   ArrowRight,
   Eye,
-  EyeOff
+  EyeOff,
 } from "lucide-react";
 
 export default function LoginPage() {
@@ -33,21 +33,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setFormError] = useState("");
-  const [successMessage, setFormSuccess] = useState("");
-
-  // Check for suspended route guard redirection
-  React.useEffect(() => {
+  const [errorMessage, setFormError] = useState(() => {
     if (typeof window !== "undefined") {
       const searchParams = new URLSearchParams(window.location.search);
       if (searchParams.get("suspended") === "true") {
-        setFormError("Account Suspended: Your access has been revoked by an administrator. Please contact support.");
+        return "Account Suspended: Your access has been revoked by an administrator. Please contact support.";
       }
     }
-  }, []);
+    return "";
+  });
+  const [successMessage, setFormSuccess] = useState("");
 
   // LoggedIn Redirect Effect
-  React.useEffect(() => {
+  useEffect(() => {
     if (authLoading || !user) return;
 
     const performRedirect = async () => {
@@ -111,27 +109,27 @@ export default function LoginPage() {
     try {
       // 1. Authenticate with Firebase Auth
       const userCredential = await signInWithEmailAndPassword(
-        auth, 
-        email.trim().toLowerCase(), 
+        auth,
+        email.trim().toLowerCase(),
         password
       );
-      const user = userCredential.user;
+      const authUser = userCredential.user;
 
-      setFormSuccess("Authentication successful! Redirecting...");
+      setFormSuccess("Authentication successful! Redirecting to your workspace...");
 
       // 2. Fetch Custom Claims and Firestore Profile
-      const idTokenResult = await user.getIdTokenResult();
+      const idTokenResult = await authUser.getIdTokenResult();
       const roleClaim = idTokenResult.claims.role;
 
       // 3. Routing Traffic Cop Logic
-      const lowercaseEmail = user.email?.toLowerCase();
+      const lowercaseEmail = authUser.email?.toLowerCase();
 
       // Condition 1: Specific Testing Bypass email
       if (lowercaseEmail === "chukwudubem7@gmail.com") {
-        setAuth(user, "superadmin-bypass", {
+        setAuth(authUser, "superadmin-bypass", {
           isActive: true,
           plan: "enterprise",
-          validUntil: "N/A"
+          validUntil: "N/A",
         });
         router.push("/superadmin");
         return;
@@ -139,77 +137,83 @@ export default function LoginPage() {
 
       // Condition 2: Custom claim role === "superadmin"
       if (roleClaim === "superadmin") {
-        setAuth(user, "superadmin-claim", {
+        setAuth(authUser, "superadmin-claim", {
           isActive: true,
           plan: "enterprise",
-          validUntil: "N/A"
+          validUntil: "N/A",
         });
         router.push("/superadmin");
         return;
       }
 
       // Condition 3: Look up Firestore user profile for role/workspace assignment
-      // Check both UID and Email based lookups to cover various onboarding flows
-      let userDoc = await getDoc(doc(db, "users", user.uid));
-      if (!userDoc.exists() && user.email) {
-        userDoc = await getDoc(doc(db, "users", user.email.toLowerCase()));
+      let userDoc = await getDoc(doc(db, "users", authUser.uid));
+      if (!userDoc.exists() && authUser.email) {
+        userDoc = await getDoc(doc(db, "users", authUser.email.toLowerCase()));
       }
 
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        
+
         // Block Suspended Accounts
         if (userData.isActive === false) {
           await signOut(auth);
-          setFormError("Account Suspended: Your access has been revoked by an administrator. Please contact support.");
+          setFormError(
+            "Account Suspended: Your access has been revoked by an administrator. Please contact support."
+          );
           setLoading(false);
           return;
         }
 
-        const role = userData.role || "admin"; // Default to admin for tenant creators
+        const role = userData.role || "admin";
         const workspaceId = userData.workspaceId || null;
-        const subData = userData.subscription || { isActive: true, plan: "Trial", validUntil: "N/A" };
+        const subData = userData.subscription || {
+          isActive: true,
+          plan: "Trial",
+          validUntil: "N/A",
+        };
 
-        setAuth(user, workspaceId, {
+        setAuth(authUser, workspaceId, {
           isActive: subData.isActive,
           plan: subData.plan || "Trial",
-          validUntil: subData.validUntil || "N/A"
+          validUntil: subData.validUntil || "N/A",
         });
 
         if (role === "superadmin") {
           router.push("/superadmin");
-        } else if (role === "admin" || role === "staff") {
-          router.push("/dashboard");
         } else {
-          // Default fallback for any valid user profile
           router.push("/dashboard");
         }
         return;
       }
 
       // Condition 4: Fallback if no Firestore profile doc exists yet
-      // This is helpful for newly registered users where document creation is pending,
-      // we'll log them in, auto-associate a placeholder workspace, and route them to dashboard.
-      const defaultWorkspaceId = `workspace_${user.uid.substring(0, 6)}`;
-      setAuth(user, defaultWorkspaceId, {
+      const defaultWorkspaceId = `workspace_${authUser.uid.substring(0, 6)}`;
+      setAuth(authUser, defaultWorkspaceId, {
         isActive: true,
-        plan: "Developer Trial",
-        validUntil: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+        plan: "EventOps Professional",
+        validUntil: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split("T")[0],
       });
       router.push("/dashboard");
-
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Login failure:", err);
-      // Map Firebase Auth error codes to user-friendly messages
       let cleanMessage = "An unexpected error occurred. Please try again.";
-      if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password" || err.code === "auth/user-not-found") {
+      const error = err as { code?: string; message?: string };
+      if (
+        error.code === "auth/invalid-credential" ||
+        error.code === "auth/wrong-password" ||
+        error.code === "auth/user-not-found"
+      ) {
         cleanMessage = "Invalid credentials. Please verify your email and password.";
-      } else if (err.code === "auth/network-request-failed") {
+      } else if (error.code === "auth/network-request-failed") {
         cleanMessage = "Network error. Please check your internet connection.";
-      } else if (err.code === "auth/too-many-requests") {
-        cleanMessage = "Too many login attempts. Access is temporarily suspended. Please try again later.";
-      } else if (err.message) {
-        cleanMessage = err.message;
+      } else if (error.code === "auth/too-many-requests") {
+        cleanMessage =
+          "Too many login attempts. Access is temporarily suspended. Please try again later.";
+      } else if (error.message) {
+        cleanMessage = error.message;
       }
       setFormError(cleanMessage);
       setLoading(false);
@@ -217,156 +221,197 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex font-sans overflow-hidden">
-      
-      {/* 2-COLUMN LAYOUT CONTEXT */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 relative w-full h-full min-h-screen">
+    <div className="min-h-screen bg-[#f6f1e5] dark:bg-[#0f040f] text-neutral-900 dark:text-neutral-100 flex font-sans">
+      {/* 2-COLUMN SPLIT-SCREEN LAYOUT */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 relative w-full min-h-screen">
         
-        {/* COLUMN 1: BRAND SHOWCASE PANEL (Desktop Only) */}
-        <div className="hidden md:flex flex-col justify-between p-12 bg-gradient-to-br from-zinc-950 via-zinc-900 to-indigo-950/60 border-r border-zinc-800 relative overflow-hidden">
-          {/* Ambient lighting mesh effects */}
-          <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-indigo-500/10 blur-[100px] pointer-events-none animate-pulse" />
-          <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-80 h-80 rounded-full bg-cyan-500/10 blur-[100px] pointer-events-none animate-pulse duration-3000" />
+        {/* COLUMN 1: MATTE ELEGANCE BRAND SHOWCASE PANEL */}
+        <div className="hidden lg:flex lg:col-span-7 flex-col justify-between p-12 xl:p-16 bg-[#220022] text-white border-r border-white/10 relative">
           
-          {/* Top Logo and Header */}
-          <div className="flex items-center gap-3 z-10">
-            <div className="size-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center text-zinc-950 font-black shadow-lg shadow-indigo-500/10">
-              SF
+          {/* Top Logo & System Indicator */}
+          <div className="flex items-center gap-3.5 z-10">
+            {/* Clean Logo Placeholder */}
+            <div className="w-10 h-10 rounded-xl bg-white/10 text-[#ffd700] font-bold flex items-center justify-center border border-white/15">
+              SE
             </div>
             <div>
-              <h1 className="text-sm font-bold tracking-tight text-white font-heading uppercase">
+              <h1 className="text-base font-bold tracking-tight text-white uppercase">
                 Sterling EventOps
               </h1>
-              <span className="text-[10px] text-zinc-400 font-mono">Platform MVP</span>
+              <span className="text-[11px] text-white/60 font-medium tracking-wide">
+                Enterprise Logistics Platform
+              </span>
             </div>
           </div>
 
-          {/* Core Feature Checklist */}
-          <div className="space-y-6 max-w-md z-10 my-auto">
-            <span className="inline-flex items-center gap-1 text-xs text-indigo-400 font-semibold uppercase tracking-wider bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full">
-              <Sparkles className="size-3.5 animate-spin duration-3000" />
-              SaaS Operational Framework
-            </span>
-            
-            <h2 className="text-3xl font-black tracking-tight leading-tight text-white font-heading">
-              Secure Multi-Tenant Asset Tracking Engine
+          {/* Hero Branding Content */}
+          <div className="space-y-8 max-w-lg z-10 my-auto py-8">
+            {/* Clean Frosted Badge */}
+            <Badge
+              variant="outline"
+              className="bg-white/10 text-white/90 border border-white/15 backdrop-blur-md rounded-full px-3 py-1 text-xs font-medium tracking-wider uppercase gap-1.5 shadow-none"
+            >
+              <Sparkles className="size-3.5 text-[#ffd700]" />
+              EVENT LOGISTICS &amp; ASSET CONTROL
+            </Badge>
+
+            {/* Hero Heading */}
+            <h2 className="text-4xl xl:text-5xl font-bold tracking-tight leading-[1.2] text-white">
+              Flawless Event Execution.{" "}
+              <span className="text-[#ffd700]/90 font-semibold block sm:inline">
+                Down to the Last Asset.
+              </span>
             </h2>
-            
-            <p className="text-zinc-400 text-sm leading-relaxed">
-              Sterling EventOps enables offline-first asset audits, secure workspace isolation, and an immutable non-deletable log audit trail.
+
+            {/* Sub-heading */}
+            <p className="text-white/75 text-sm xl:text-base leading-relaxed font-normal">
+              Sterling EventOps keeps your rental inventory accountable, eliminates
+              venue missing-item chaos, and tracks every piece of equipment in
+              real-time.
             </p>
 
-            {/* Checklist Items */}
-            <ul className="space-y-3.5 pt-4 text-xs font-semibold text-zinc-300">
-              <li className="flex items-center gap-2.5">
-                <div className="size-5 rounded bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-                  <Layers className="size-3.5" />
+            {/* Subtle Value Bullet Points */}
+            <ul className="space-y-4 pt-2 text-xs xl:text-sm font-medium text-white/85">
+              <li className="flex items-start gap-3.5">
+                <div className="text-[#ffd700] bg-white/5 p-2 rounded-lg border border-white/10 shrink-0 mt-0.5">
+                  <PackageCheck className="size-4" />
                 </div>
-                <span>Strict Multi-Tenancy Workspace Segmentation</span>
+                <div>
+                  <strong className="text-white font-semibold block text-sm">
+                    Zero Inventory Loss
+                  </strong>
+                  <span className="text-white/65 text-xs">
+                    Real-time scan routing across every warehouse and venue setup.
+                  </span>
+                </div>
               </li>
-              <li className="flex items-center gap-2.5">
-                <div className="size-5 rounded bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-                  <QrCode className="size-3.5" />
+
+              <li className="flex items-start gap-3.5">
+                <div className="text-[#ffd700] bg-white/5 p-2 rounded-lg border border-white/10 shrink-0 mt-0.5">
+                  <QrCode className="size-4" />
                 </div>
-                <span>Fast Real-Time QR & Scan Router Routing</span>
+                <div>
+                  <strong className="text-white font-semibold block text-sm">
+                    Instant QR Audits
+                  </strong>
+                  <span className="text-white/65 text-xs">
+                    Lightning-fast field verification using any mobile browser.
+                  </span>
+                </div>
               </li>
-              <li className="flex items-center gap-2.5">
-                <div className="size-5 rounded bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-                  <Database className="size-3.5" />
+
+              <li className="flex items-start gap-3.5">
+                <div className="text-[#ffd700] bg-white/5 p-2 rounded-lg border border-white/10 shrink-0 mt-0.5">
+                  <ShieldCheck className="size-4" />
                 </div>
-                <span>Multi-Tab Local Storage Cache Persistence</span>
-              </li>
-              <li className="flex items-center gap-2.5">
-                <div className="size-5 rounded bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-                  <History className="size-3.5" />
+                <div>
+                  <strong className="text-white font-semibold block text-sm">
+                    Chain of Custody
+                  </strong>
+                  <span className="text-white/65 text-xs">
+                    Immutable photo logs and condition checks on every return.
+                  </span>
                 </div>
-                <span>Immutable Event Movement Audit Trail Logs</span>
               </li>
             </ul>
           </div>
 
           {/* Footer Metadata */}
-          <div className="text-[10px] text-zinc-500 font-mono z-10">
-            © 2026 Sterling EventOps Systems. All rights reserved.
+          <div className="flex items-center justify-between text-[11px] text-white/40 z-10 pt-4 border-t border-white/10">
+            <span>© 2026 Sterling EventOps Systems</span>
+            <span>Security &amp; Tenant Partitioning</span>
           </div>
         </div>
 
-        {/* COLUMN 2: LOGIN PANEL */}
-        <div className="flex flex-col items-center justify-center p-6 bg-zinc-950 relative">
-          {/* Ambient lighting mesh effects */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
-
-          {/* Logomark header for mobile viewports */}
-          <div className="flex md:hidden items-center gap-3 absolute top-8 left-8">
-            <div className="size-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center text-zinc-950 font-black">
-              SF
+        {/* COLUMN 2: FLAT EDITORIAL LOGIN FORM PANEL */}
+        <div className="lg:col-span-5 flex flex-col items-center justify-center p-6 sm:p-10 bg-[#f6f1e5] dark:bg-[#0f040f] min-h-screen">
+          
+          {/* Mobile Logomark Header */}
+          <div className="flex lg:hidden items-center gap-3 mb-6">
+            <div className="w-9 h-9 rounded-xl bg-[#220022] text-[#ffd700] font-bold flex items-center justify-center border border-white/10">
+              SE
             </div>
-            <h1 className="text-xs font-bold text-white uppercase font-heading tracking-wide">
-              Sterling Ops
-            </h1>
+            <div>
+              <h1 className="text-sm font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
+                Sterling EventOps
+              </h1>
+              <p className="text-[10px] text-neutral-500">
+                Event Logistics &amp; Asset Control
+              </p>
+            </div>
           </div>
 
-          {/* Login Card */}
-          <div className="max-w-sm w-full bg-zinc-900/40 border border-zinc-850 rounded-2xl p-6 md:p-8 shadow-2xl backdrop-blur-md relative overflow-hidden animate-in zoom-in-95 duration-300">
-            {/* Top glowing line */}
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 to-cyan-400 shadow-[0_0_15px_rgba(99,102,241,0.3)]" />
-
-            {/* Header */}
-            <div className="space-y-1.5 mb-6 text-center sm:text-left">
-              <h3 className="text-xl font-bold tracking-tight text-white font-heading">
-                Sign In
-              </h3>
-              <p className="text-xs text-zinc-400">
-                Enter your administrative credentials to open your event cockpit.
+          {/* Clean Flat Sign-In Card */}
+          <div className="max-w-md w-full bg-white dark:bg-[#180818] border border-neutral-200/80 dark:border-neutral-800 rounded-2xl p-8 shadow-sm">
+            
+            {/* Card Header */}
+            <div className="space-y-1.5 mb-6">
+              <h2 className="text-2xl font-bold text-neutral-900 dark:text-white">
+                Welcome Back
+              </h2>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                Enter your account details to access your workspace.
               </p>
             </div>
 
-            {/* Form */}
+            {/* Interactive Form */}
             <form onSubmit={handleLogin} className="space-y-4">
               
-              {/* Email Input */}
+              {/* Email Address Input */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                  <Mail className="size-3.5 text-zinc-500" />
+                <Label
+                  htmlFor="email"
+                  className="text-xs font-semibold text-neutral-700 dark:text-neutral-300"
+                >
+                  <Mail className="size-3.5 text-neutral-500" />
                   Email Address
-                </label>
-                <input 
-                  type="email" 
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
                   required
                   autoFocus
-                  placeholder="name@company.com"
+                  placeholder="admin@events.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 outline-none focus:border-indigo-500 transition-colors duration-150"
+                  className="bg-neutral-50/50 border-neutral-200 text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-1 focus-visible:ring-[#800080] focus-visible:border-[#800080] transition-colors h-11 dark:bg-neutral-900/50 dark:border-neutral-800 dark:text-neutral-100"
                 />
               </div>
 
-              {/* Password Input */}
+              {/* Password Input with Toggle */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Lock className="size-3.5 text-zinc-500" />
+                  <Label
+                    htmlFor="password"
+                    className="text-xs font-semibold text-neutral-700 dark:text-neutral-300"
+                  >
+                    <Lock className="size-3.5 text-neutral-500" />
                     Password
-                  </label>
-                  <a href="#" className="text-[10px] text-indigo-400 font-medium hover:underline">
+                  </Label>
+                  <a
+                    href="#"
+                    className="text-[11px] text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 font-medium transition-colors"
+                  >
                     Forgot password?
                   </a>
                 </div>
+
                 <div className="relative">
-                  <input 
-                    type={showPassword ? "text" : "password"} 
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={loading}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 outline-none focus:border-indigo-500 pr-10 transition-colors duration-150"
+                    className="bg-neutral-50/50 border-neutral-200 text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-1 focus-visible:ring-[#800080] focus-visible:border-[#800080] transition-colors h-11 dark:bg-neutral-900/50 dark:border-neutral-800 dark:text-neutral-100 pr-10"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 focus:outline-none"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors focus:outline-none"
                   >
                     {showPassword ? (
                       <EyeOff className="size-4" />
@@ -379,46 +424,56 @@ export default function LoginPage() {
 
               {/* Feedback Alerts */}
               {errorMessage && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in slide-in-from-top-2">
-                  <AlertTriangle className="size-4 shrink-0 mt-0.5 animate-bounce" />
-                  <span>{errorMessage}</span>
+                <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-300 rounded-lg p-3 text-xs flex items-start gap-2.5">
+                  <AlertTriangle className="size-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+                  <span className="leading-tight">{errorMessage}</span>
                 </div>
               )}
 
               {successMessage && (
-                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg p-3 text-xs flex items-start gap-2.5 animate-in slide-in-from-top-2">
-                  <CheckCircle className="size-4 shrink-0 mt-0.5 animate-pulse" />
-                  <span>{successMessage}</span>
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-300 rounded-lg p-3 text-xs flex items-start gap-2.5">
+                  <CheckCircle2 className="size-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="leading-tight">{successMessage}</span>
                 </div>
               )}
 
               {/* Submit Action Button */}
               <div className="pt-2">
-                <Button 
+                <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-bold hover:opacity-95 shadow-lg shadow-indigo-600/10 h-11 border-none cursor-pointer"
+                  className="w-full bg-[#800080] hover:bg-[#660066] text-white font-medium shadow-none rounded-xl py-5 h-auto transition-colors cursor-pointer flex items-center justify-center gap-2 group"
                 >
                   {loading ? (
-                    <div className="flex items-center justify-center gap-2">
+                    <>
                       <div className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Checking records...
-                    </div>
+                      <span>Verifying Workspace...</span>
+                    </>
                   ) : (
-                    <div className="flex items-center justify-center gap-1.5">
-                      Open Operational Cockpit
-                      <ArrowRight className="size-4" />
-                    </div>
+                    <>
+                      <span>Sign In to Workspace</span>
+                      <ArrowRight className="size-4 group-hover:translate-x-0.5 transition-transform" />
+                    </>
                   )}
                 </Button>
               </div>
 
             </form>
           </div>
+
+          {/* Support Microcopy */}
+          <div className="text-xs text-neutral-500 text-center mt-6">
+            <span>Need an invitation link? </span>
+            <a
+              href="#"
+              className="text-[#800080] dark:text-[#ffd700] font-medium hover:underline transition-colors"
+            >
+              Contact your Workspace Administrator
+            </a>
+          </div>
         </div>
 
       </div>
-
     </div>
   );
 }
