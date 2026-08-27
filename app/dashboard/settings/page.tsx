@@ -35,7 +35,7 @@ import {
   CheckCircle2,
   Calendar,
   Layers,
-  ShieldAlert
+  ShieldAlert,
 } from "lucide-react";
 
 interface TeamMember {
@@ -49,7 +49,9 @@ interface TeamMember {
 export default function SettingsPage() {
   const { workspaceId, user } = useWorkspaceStore();
 
-  const [activeTab, setActiveTab] = useState<"profile" | "team" | "thermal">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "team" | "thermal">(
+    "profile",
+  );
 
   // Profile Form States
   const [companyName, setCompanyName] = useState("");
@@ -117,7 +119,7 @@ export default function SettingsPage() {
             "Furniture",
             "Staging",
             "Video",
-          ]
+          ],
         );
       }
     });
@@ -132,7 +134,7 @@ export default function SettingsPage() {
     setLoadingTeam(true);
     const q = query(
       collection(db, "users"),
-      where("workspaceId", "==", workspaceId)
+      where("workspaceId", "==", workspaceId),
     );
     const unsubscribe = onSnapshot(
       q,
@@ -147,7 +149,7 @@ export default function SettingsPage() {
       (err) => {
         console.error("Team loading failed:", err);
         setLoadingTeam(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -172,7 +174,7 @@ export default function SettingsPage() {
           contactPhone: contactPhone.trim(),
           address: address.trim(),
         },
-        { merge: true }
+        { merge: true },
       );
 
       setProfileSuccess("Company profile details successfully saved!");
@@ -180,7 +182,7 @@ export default function SettingsPage() {
     } catch (err: any) {
       console.error("Failed to save workspace profile:", err);
       setProfileError(
-        err.message || "An unexpected error occurred saving configurations."
+        err.message || "An unexpected error occurred saving configurations.",
       );
     } finally {
       setSavingProfile(false);
@@ -226,9 +228,14 @@ export default function SettingsPage() {
   // Toggle Account Status (Admin privilege action)
   const handleToggleActive = async (
     memberId: string,
-    currentStatus: boolean
+    currentStatus: boolean,
   ) => {
-    if (currentUserRole !== "admin" && currentUserRole !== "superadmin" && user?.email !== "chukwudubem7@gmail.com") return;
+    if (
+      currentUserRole !== "admin" &&
+      currentUserRole !== "superadmin" &&
+      user?.email !== "chukwudubem7@gmail.com"
+    )
+      return;
     try {
       const ref = doc(db, "users", memberId);
       await setDoc(ref, { isActive: !currentStatus }, { merge: true });
@@ -239,7 +246,12 @@ export default function SettingsPage() {
 
   // Switch Member Role (Admin privilege action)
   const handleRoleChange = async (memberId: string, newRole: string) => {
-    if (currentUserRole !== "admin" && currentUserRole !== "superadmin" && user?.email !== "chukwudubem7@gmail.com") return;
+    if (
+      currentUserRole !== "admin" &&
+      currentUserRole !== "superadmin" &&
+      user?.email !== "chukwudubem7@gmail.com"
+    )
+      return;
     try {
       const ref = doc(db, "users", memberId);
       await setDoc(ref, { role: newRole }, { merge: true });
@@ -298,7 +310,6 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-8 font-sans">
-      
       {/* --- 1. PAGE HEADER --- */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-neutral-200/80">
         <div>
@@ -309,7 +320,8 @@ export default function SettingsPage() {
             Workspace Administration
           </h1>
           <p className="text-sm text-neutral-500 mt-1 font-normal">
-            Manage company profile details, onboard warehouse staff, assign team permissions, and customize default QR tag sizes.
+            Manage company profile details, onboard warehouse staff, assign team
+            permissions, and customize default QR tag sizes.
           </p>
         </div>
       </div>
@@ -358,7 +370,6 @@ export default function SettingsPage() {
         {/* ================= TAB 1: COMPANY PROFILE & BILLING ================= */}
         {activeTab === "profile" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            
             {/* Left Column (Span 2): Profile Form Card */}
             <div className="lg:col-span-2 bg-white border border-neutral-200/80 rounded-xl p-6 shadow-xs space-y-6">
               <div className="flex items-center gap-2.5 pb-4 border-b border-neutral-100">
@@ -370,7 +381,8 @@ export default function SettingsPage() {
                     Company Details
                   </h3>
                   <p className="text-xs text-neutral-500">
-                    Update your public organization name, contact lines, and primary warehouse location.
+                    Update your public organization name, contact lines, and
+                    primary warehouse location.
                   </p>
                 </div>
               </div>
@@ -396,7 +408,8 @@ export default function SettingsPage() {
                   {/* Support Email */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-neutral-700 flex items-center gap-1.5">
-                      <Mail className="size-3.5 text-neutral-400" /> Support Contact Email
+                      <Mail className="size-3.5 text-neutral-400" /> Support
+                      Contact Email
                     </label>
                     <Input
                       type="email"
@@ -411,7 +424,8 @@ export default function SettingsPage() {
                   {/* Contact Phone */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-neutral-700 flex items-center gap-1.5">
-                      <Phone className="size-3.5 text-neutral-400" /> Contact Phone
+                      <Phone className="size-3.5 text-neutral-400" /> Contact
+                      Phone
                     </label>
                     <Input
                       type="text"
@@ -427,7 +441,8 @@ export default function SettingsPage() {
                 {/* Warehouse Address */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-neutral-700 flex items-center gap-1.5">
-                    <MapPin className="size-3.5 text-neutral-400" /> Address / Primary Warehouse Location
+                    <MapPin className="size-3.5 text-neutral-400" /> Address /
+                    Primary Warehouse Location
                   </label>
                   <textarea
                     rows={3}
@@ -502,7 +517,9 @@ export default function SettingsPage() {
                       {subscription?.plan || "Enterprise Pro"}
                     </span>
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-[#800080] border border-purple-200">
-                      {subscription?.isActive !== false ? "Active License" : "Suspended"}
+                      {subscription?.isActive !== false
+                        ? "Active License"
+                        : "Suspended"}
                     </span>
                   </div>
                 </div>
@@ -510,7 +527,8 @@ export default function SettingsPage() {
                 {/* Renewal Cycle */}
                 <div className="p-4 rounded-xl bg-neutral-50/70 border border-neutral-200/60 space-y-1.5">
                   <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block flex items-center gap-1.5">
-                    <Calendar className="size-3.5 text-neutral-400" /> Renewal Date
+                    <Calendar className="size-3.5 text-neutral-400" /> Renewal
+                    Date
                   </span>
                   <span className="text-sm font-medium text-neutral-800 font-mono block">
                     {subscription?.validUntil || "December 31, 2026"}
@@ -524,22 +542,20 @@ export default function SettingsPage() {
                     <span>Administrative Notice</span>
                   </div>
                   <p className="leading-relaxed text-neutral-600">
-                    Subscription tier, billing cycles, and feature access are managed directly by Sterling EventOps Super Admin.
+                    Subscription tier, billing cycles, and feature access are
+                    managed directly by Sterling EventOps Super Admin.
                   </p>
                 </div>
               </div>
             </div>
-
           </div>
         )}
 
         {/* ================= TAB 2: TEAM & STAFF DIRECTORY ================= */}
         {activeTab === "team" && (
           <div className="space-y-6">
-            
             {/* Team Directory Container */}
             <div className="bg-white border border-neutral-200/80 rounded-xl p-6 shadow-xs space-y-6">
-              
               {/* Header Actions */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-neutral-100">
                 <div>
@@ -547,7 +563,8 @@ export default function SettingsPage() {
                     Workspace Team Members
                   </h3>
                   <p className="text-xs text-neutral-500 mt-0.5">
-                    Manage staff roles, operational permissions, and active login privileges across the workspace.
+                    Manage staff roles, operational permissions, and active
+                    login privileges across the workspace.
                   </p>
                 </div>
 
@@ -572,13 +589,19 @@ export default function SettingsPage() {
                   {loadingTeam ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-3 text-xs text-neutral-500">
                       <RefreshCw className="size-5 animate-spin text-[#800080]" />
-                      <span className="font-medium">Loading team directory...</span>
+                      <span className="font-medium">
+                        Loading team directory...
+                      </span>
                     </div>
                   ) : team.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                       <Users className="size-8 text-neutral-400 mb-2" />
-                      <h4 className="text-sm font-bold text-neutral-900">No team members found</h4>
-                      <p className="text-xs text-neutral-500 mt-1">Use the invite button above to onboard warehouse crew.</p>
+                      <h4 className="text-sm font-bold text-neutral-900">
+                        No team members found
+                      </h4>
+                      <p className="text-xs text-neutral-500 mt-1">
+                        Use the invite button above to onboard warehouse crew.
+                      </p>
                     </div>
                   ) : (
                     <table className="w-full text-left text-xs border-collapse">
@@ -589,7 +612,9 @@ export default function SettingsPage() {
                           <th className="px-6 py-3.5">Platform Role</th>
                           <th className="px-6 py-3.5">Access Status</th>
                           {isOperatorAdmin && (
-                            <th className="px-6 py-3.5 text-right">Access Controls</th>
+                            <th className="px-6 py-3.5 text-right">
+                              Access Controls
+                            </th>
                           )}
                         </tr>
                       </thead>
@@ -598,12 +623,19 @@ export default function SettingsPage() {
                           const isSelf = member.id === user?.uid;
                           const activeState = member.isActive !== false;
                           const initials = member.name
-                            ? member.name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase()
+                            ? member.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .substring(0, 2)
+                                .toUpperCase()
                             : "U";
 
                           return (
-                            <tr key={member.id} className="hover:bg-neutral-50/60 text-neutral-800 text-xs transition-colors">
-                              
+                            <tr
+                              key={member.id}
+                              className="hover:bg-neutral-50/60 text-neutral-800 text-xs transition-colors"
+                            >
                               {/* Name */}
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2.5">
@@ -611,9 +643,13 @@ export default function SettingsPage() {
                                     {initials}
                                   </div>
                                   <div>
-                                    <span className="font-bold text-neutral-900 block">{member.name || "Unnamed Operator"}</span>
+                                    <span className="font-bold text-neutral-900 block">
+                                      {member.name || "Unnamed Operator"}
+                                    </span>
                                     {isSelf && (
-                                      <span className="text-[10px] text-purple-700 font-medium">(You)</span>
+                                      <span className="text-[10px] text-purple-700 font-medium">
+                                        (You)
+                                      </span>
                                     )}
                                   </div>
                                 </div>
@@ -629,30 +665,45 @@ export default function SettingsPage() {
                                 {isOperatorAdmin && !isSelf ? (
                                   <select
                                     value={member.role || "staff"}
-                                    onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                                    onChange={(e) =>
+                                      handleRoleChange(
+                                        member.id,
+                                        e.target.value,
+                                      )
+                                    }
                                     className="bg-white border border-neutral-200 rounded-lg px-2.5 py-1 text-xs text-neutral-800 font-medium outline-none cursor-pointer focus:border-[#800080]"
                                   >
-                                    <option value="staff">Staff Operator</option>
+                                    <option value="staff">
+                                      Staff Operator
+                                    </option>
                                     <option value="admin">Administrator</option>
                                   </select>
                                 ) : (
-                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                    member.role === "admin" || member.role === "superadmin"
-                                      ? "bg-purple-50 text-[#800080] border border-purple-200"
-                                      : "bg-neutral-100 text-neutral-700 border border-neutral-200"
-                                  }`}>
-                                    {member.role === "admin" || member.role === "superadmin" ? "Admin" : "Staff"}
+                                  <span
+                                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                      member.role === "admin" ||
+                                      member.role === "superadmin"
+                                        ? "bg-purple-50 text-[#800080] border border-purple-200"
+                                        : "bg-neutral-100 text-neutral-700 border border-neutral-200"
+                                    }`}
+                                  >
+                                    {member.role === "admin" ||
+                                    member.role === "superadmin"
+                                      ? "Admin"
+                                      : "Staff"}
                                   </span>
                                 )}
                               </td>
 
                               {/* Access Status */}
                               <td className="px-6 py-4">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                  activeState
-                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    : "bg-rose-50 text-rose-700 border border-rose-200"
-                                }`}>
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                    activeState
+                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      : "bg-rose-50 text-rose-700 border border-rose-200"
+                                  }`}
+                                >
                                   {activeState ? "Active" : "Suspended"}
                                 </span>
                               </td>
@@ -669,20 +720,29 @@ export default function SettingsPage() {
                                       <span className="text-xs text-neutral-500 font-medium">
                                         {activeState ? "Enabled" : "Disabled"}
                                       </span>
-                                      
+
                                       {/* Switch Component */}
                                       <button
                                         type="button"
                                         role="switch"
                                         aria-checked={activeState}
-                                        onClick={() => handleToggleActive(member.id, activeState)}
+                                        onClick={() =>
+                                          handleToggleActive(
+                                            member.id,
+                                            activeState,
+                                          )
+                                        }
                                         className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                          activeState ? "bg-[#800080]" : "bg-neutral-300"
+                                          activeState
+                                            ? "bg-[#800080]"
+                                            : "bg-neutral-300"
                                         }`}
                                       >
                                         <span
                                           className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                                            activeState ? "translate-x-4" : "translate-x-0"
+                                            activeState
+                                              ? "translate-x-4"
+                                              : "translate-x-0"
                                           }`}
                                         />
                                       </button>
@@ -690,7 +750,6 @@ export default function SettingsPage() {
                                   )}
                                 </td>
                               )}
-
                             </tr>
                           );
                         })}
@@ -699,16 +758,13 @@ export default function SettingsPage() {
                   )}
                 </div>
               </div>
-
             </div>
-
           </div>
         )}
 
         {/* ================= TAB 3: THERMAL QR LABEL DEFAULTS ================= */}
         {activeTab === "thermal" && (
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-            
             {/* Category Tag Manager (Span 3) */}
             <div className="lg:col-span-3 bg-white border border-neutral-200/80 rounded-xl p-6 shadow-xs space-y-6">
               <div className="flex items-center gap-2.5 pb-4 border-b border-neutral-100">
@@ -720,7 +776,8 @@ export default function SettingsPage() {
                     Inventory Category Tags
                   </h3>
                   <p className="text-xs text-neutral-500">
-                    Configure global organizational groups for warehouse products and catalog filtering.
+                    Configure global organizational groups for warehouse
+                    products and catalog filtering.
                   </p>
                 </div>
               </div>
@@ -754,7 +811,9 @@ export default function SettingsPage() {
                   <span className="text-xs font-semibold text-neutral-700">
                     Active Categories ({categories.length})
                   </span>
-                  <span className="text-[11px] text-neutral-400">Click &times; to remove</span>
+                  <span className="text-[11px] text-neutral-400">
+                    Click &times; to remove
+                  </span>
                 </div>
 
                 <div className="flex flex-wrap gap-2 bg-neutral-50/70 border border-neutral-200/80 p-4 rounded-xl min-h-[90px] items-start">
@@ -827,7 +886,6 @@ export default function SettingsPage() {
                 {/* Sticker Mockup Container */}
                 <div className="flex items-center justify-center p-8 bg-[#f6f1e5]/60 rounded-xl border border-neutral-200/80">
                   <div className="w-[220px] h-[110px] bg-white text-neutral-900 p-3.5 rounded-md flex items-center justify-between border-2 border-dashed border-neutral-300 relative shadow-md">
-                    
                     {/* Left Info */}
                     <div className="flex flex-col justify-between h-full select-none max-w-[115px]">
                       <div>
@@ -851,11 +909,7 @@ export default function SettingsPage() {
 
                     {/* Right QR Code */}
                     <div className="size-16 border border-neutral-200 p-1 flex items-center justify-center bg-white rounded shrink-0 shadow-2xs">
-                      <QRCodeSVG
-                        value="SKU-STG-1049"
-                        size={56}
-                        level="M"
-                      />
+                      <QRCodeSVG value="SKU-STG-1049" size={56} level="M" />
                     </div>
 
                     {/* Edge Dimension Indicators */}
@@ -875,12 +929,13 @@ export default function SettingsPage() {
                     <span>High-Definition Thermal Printing</span>
                   </div>
                   <p>
-                    Every generated inventory record contains dynamic print endpoints optimized for direct ZPL or PDF streaming to industrial thermal barcode hardware.
+                    Every generated inventory record contains dynamic print
+                    endpoints optimized for direct ZPL or PDF streaming to
+                    industrial thermal barcode hardware.
                   </p>
                 </div>
               </div>
             </div>
-
           </div>
         )}
       </div>
@@ -889,7 +944,6 @@ export default function SettingsPage() {
       {inviteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xs bg-black/50 transition-all duration-300 animate-in fade-in">
           <div className="relative max-w-md w-full bg-white border border-neutral-200/80 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
-            
             {/* Modal Header */}
             <div className="px-6 py-5 border-b border-neutral-200/80 bg-neutral-50/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -924,7 +978,8 @@ export default function SettingsPage() {
                       <span>Invitation Link Generated!</span>
                     </div>
                     <p className="text-xs leading-relaxed text-emerald-700">
-                      Copy and share this secure invitation link with the staff member to complete their registration.
+                      Copy and share this secure invitation link with the staff
+                      member to complete their registration.
                     </p>
                   </div>
 
@@ -1011,8 +1066,12 @@ export default function SettingsPage() {
                       onChange={(e) => setInviteRole(e.target.value)}
                       className="w-full bg-white border border-neutral-200 rounded-xl px-3.5 h-10 text-xs text-neutral-800 font-medium outline-none cursor-pointer focus:border-[#800080]"
                     >
-                      <option value="staff">Staff Operator (Warehouse & Audits)</option>
-                      <option value="admin">Administrator (Full Workspace Access)</option>
+                      <option value="staff">
+                        Staff Operator (Warehouse & Audits)
+                      </option>
+                      <option value="admin">
+                        Administrator (Full Workspace Access)
+                      </option>
                     </select>
                   </div>
 
@@ -1022,14 +1081,14 @@ export default function SettingsPage() {
                       type="button"
                       variant="outline"
                       onClick={() => setInviteModalOpen(false)}
-                      className="w-full border-neutral-200 text-neutral-700 hover:bg-neutral-50 text-xs font-medium rounded-xl h-10 cursor-pointer"
+                      className="flex-1 border-neutral-200 text-neutral-700 hover:bg-neutral-50 text-xs font-medium rounded-xl h-10 cursor-pointer"
                     >
                       Cancel
                     </Button>
                     <Button
                       type="submit"
                       disabled={sendingInvite}
-                      className="w-full bg-[#800080] hover:bg-[#660066] text-white text-xs font-medium rounded-xl h-10 cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                      className="flex-1 bg-[#800080] hover:bg-[#660066] text-white text-xs font-medium rounded-xl h-10 cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                     >
                       {sendingInvite ? (
                         <>
@@ -1044,11 +1103,9 @@ export default function SettingsPage() {
                 </form>
               )}
             </div>
-
           </div>
         </div>
       )}
-
     </div>
   );
 }
