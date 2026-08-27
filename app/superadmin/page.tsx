@@ -31,7 +31,6 @@ import {
   ShieldAlert,
   CheckCircle,
   AlertTriangle,
-  Mail,
   X,
   Sparkles,
   Search,
@@ -41,11 +40,8 @@ import {
   Copy,
   Check,
   Edit3,
-  ShieldCheck,
   Activity,
-  ArrowRight,
   Shield,
-  Layers,
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 
@@ -77,6 +73,8 @@ interface UserProfile {
   createdAt?: string;
 }
 
+const ITEMS_PER_PAGE = 10;
+
 export default function SuperadminPage() {
   const { user, loading: authLoading } = useWorkspaceStore();
   const [isSuperadmin, setIsSuperadmin] = useState<boolean | null>(null);
@@ -97,6 +95,10 @@ export default function SuperadminPage() {
   const [planFilter, setPlanFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [userStatusFilter, setUserStatusFilter] = useState("all");
+
+  // Pagination State
+  const [workspacePage, setWorkspacePage] = useState(1);
+  const [userPage, setUserPage] = useState(1);
 
   // Loading indicators
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
@@ -128,6 +130,15 @@ export default function SuperadminPage() {
   const [editIsActive, setEditIsActive] = useState(true);
   const [editError, setEditError] = useState("");
   const [editSuccess, setEditSuccess] = useState("");
+
+  // Reset pagination on filter or search changes
+  useEffect(() => {
+    setWorkspacePage(1);
+  }, [workspaceSearch, planFilter, statusFilter]);
+
+  useEffect(() => {
+    setUserPage(1);
+  }, [userSearch, userStatusFilter]);
 
   // Check custom claims & developer email bypass
   useEffect(() => {
@@ -462,6 +473,36 @@ export default function SuperadminPage() {
     return true;
   });
 
+  // Workspace Pagination Slices
+  const totalWorkspacePages =
+    Math.ceil(filteredWorkspaces.length / ITEMS_PER_PAGE) || 1;
+  const paginatedWorkspaces = filteredWorkspaces.slice(
+    (workspacePage - 1) * ITEMS_PER_PAGE,
+    workspacePage * ITEMS_PER_PAGE
+  );
+  const workspaceStart =
+    filteredWorkspaces.length === 0
+      ? 0
+      : (workspacePage - 1) * ITEMS_PER_PAGE + 1;
+  const workspaceEnd = Math.min(
+    workspacePage * ITEMS_PER_PAGE,
+    filteredWorkspaces.length
+  );
+
+  // User Pagination Slices
+  const totalUserPages =
+    Math.ceil(filteredUsers.length / ITEMS_PER_PAGE) || 1;
+  const paginatedUsers = filteredUsers.slice(
+    (userPage - 1) * ITEMS_PER_PAGE,
+    userPage * ITEMS_PER_PAGE
+  );
+  const userStart =
+    filteredUsers.length === 0 ? 0 : (userPage - 1) * ITEMS_PER_PAGE + 1;
+  const userEnd = Math.min(
+    userPage * ITEMS_PER_PAGE,
+    filteredUsers.length
+  );
+
   // Security authorization waiting block
   if (authLoading || checkingClaims) {
     return (
@@ -583,7 +624,7 @@ export default function SuperadminPage() {
             className="bg-[#800080] hover:bg-[#660066] text-white font-medium h-11 px-5 rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-colors shrink-0"
           >
             <Plus className="size-4" />
-            <span>+ Onboard New Workspace</span>
+            <span>Onboard New Workspace</span>
           </Button>
         </div>
 
@@ -744,8 +785,8 @@ export default function SuperadminPage() {
               </div>
 
               {/* Workspaces Table Container */}
-              <div className="bg-white border border-neutral-200/80 rounded-2xl overflow-hidden shadow-sm">
-                <div className="overflow-x-auto min-h-[250px]">
+              <div className="overflow-x-auto bg-white border border-neutral-200/80 rounded-xl shadow-sm">
+                <div className="min-h-[250px]">
                   {loadingWorkspaces ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-2 text-xs text-neutral-500">
                       <RefreshCw className="size-5 animate-spin text-[#800080]" />
@@ -758,7 +799,7 @@ export default function SuperadminPage() {
                     </div>
                   ) : (
                     <Table>
-                      <TableHeader className="bg-neutral-50 text-neutral-600 uppercase text-xs font-semibold">
+                      <TableHeader className="sticky top-0 bg-neutral-50/90 backdrop-blur-sm z-10 border-b border-neutral-200 text-neutral-600 uppercase text-xs font-semibold">
                         <TableRow className="border-b border-neutral-200/80">
                           <TableHead className="px-6 py-3.5">Company Details</TableHead>
                           <TableHead className="px-6 py-3.5">Workspace ID</TableHead>
@@ -769,7 +810,7 @@ export default function SuperadminPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody className="divide-y divide-neutral-100 text-xs font-medium">
-                        {filteredWorkspaces.map((ws) => {
+                        {paginatedWorkspaces.map((ws) => {
                           const activeState =
                             ws.subscription?.isActive !== false;
                           const computedStatus = getWorkspaceStatus(ws);
@@ -869,6 +910,48 @@ export default function SuperadminPage() {
                     </Table>
                   )}
                 </div>
+
+                {/* Pagination Footer Bar */}
+                {!loadingWorkspaces && filteredWorkspaces.length > 0 && (
+                  <div className="flex items-center justify-between border-t border-neutral-200 px-6 py-4 bg-white rounded-b-xl text-xs text-neutral-500">
+                    <div>
+                      Showing {workspaceStart}–{workspaceEnd} of{" "}
+                      {filteredWorkspaces.length} workspaces
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setWorkspacePage((p) => Math.max(1, p - 1))
+                        }
+                        disabled={workspacePage === 1}
+                        className="h-8 border-neutral-200 text-neutral-700 hover:bg-neutral-50 text-xs px-3 rounded-lg"
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-xs font-medium text-neutral-600 px-2">
+                        Page {workspacePage} of {totalWorkspacePages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setWorkspacePage((p) =>
+                            Math.min(totalWorkspacePages, p + 1)
+                          )
+                        }
+                        disabled={
+                          workspacePage === totalWorkspacePages ||
+                          filteredWorkspaces.length === 0
+                        }
+                        className="h-8 border-neutral-200 text-neutral-700 hover:bg-neutral-50 text-xs px-3 rounded-lg"
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -918,8 +1001,8 @@ export default function SuperadminPage() {
               </div>
 
               {/* Users Table Container */}
-              <div className="bg-white border border-neutral-200/80 rounded-2xl overflow-hidden shadow-sm">
-                <div className="overflow-x-auto min-h-[250px]">
+              <div className="overflow-x-auto bg-white border border-neutral-200/80 rounded-xl shadow-sm">
+                <div className="min-h-[250px]">
                   {loadingUsers ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-2 text-xs text-neutral-500">
                       <RefreshCw className="size-5 animate-spin text-[#800080]" />
@@ -932,7 +1015,7 @@ export default function SuperadminPage() {
                     </div>
                   ) : (
                     <Table>
-                      <TableHeader className="bg-neutral-50 text-neutral-600 uppercase text-xs font-semibold">
+                      <TableHeader className="sticky top-0 bg-neutral-50/90 backdrop-blur-sm z-10 border-b border-neutral-200 text-neutral-600 uppercase text-xs font-semibold">
                         <TableRow className="border-b border-neutral-200/80">
                           <TableHead className="px-6 py-3.5">User Profile</TableHead>
                           <TableHead className="px-6 py-3.5">Workspace Affiliation</TableHead>
@@ -942,7 +1025,7 @@ export default function SuperadminPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody className="divide-y divide-neutral-100 text-xs font-medium">
-                        {filteredUsers.map((u) => {
+                        {paginatedUsers.map((u) => {
                           const activeState = u.isActive !== false;
                           const isSelf = u.id === user?.uid;
 
@@ -1061,6 +1144,44 @@ export default function SuperadminPage() {
                     </Table>
                   )}
                 </div>
+
+                {/* Pagination Footer Bar */}
+                {!loadingUsers && filteredUsers.length > 0 && (
+                  <div className="flex items-center justify-between border-t border-neutral-200 px-6 py-4 bg-white rounded-b-xl text-xs text-neutral-500">
+                    <div>
+                      Showing {userStart}–{userEnd} of {filteredUsers.length}{" "}
+                      users
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setUserPage((p) => Math.max(1, p - 1))}
+                        disabled={userPage === 1}
+                        className="h-8 border-neutral-200 text-neutral-700 hover:bg-neutral-50 text-xs px-3 rounded-lg"
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-xs font-medium text-neutral-600 px-2">
+                        Page {userPage} of {totalUserPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setUserPage((p) => Math.min(totalUserPages, p + 1))
+                        }
+                        disabled={
+                          userPage === totalUserPages ||
+                          filteredUsers.length === 0
+                        }
+                        className="h-8 border-neutral-200 text-neutral-700 hover:bg-neutral-50 text-xs px-3 rounded-lg"
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
